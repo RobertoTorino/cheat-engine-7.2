@@ -30,10 +30,9 @@ type
 
 implementation
 
-uses LuaHandler, networkInterface, networkInterfaceApi;
+uses LuaHandler;
 
 constructor TLuaPipeClient.create(pipename: string; timeout: integer=0);
-var c: TCEConnection;
 begin
   inherited create;
 
@@ -41,25 +40,19 @@ begin
   fOverLapped:=true; //timeout>0;
 
   pipe:=INVALID_HANDLE_VALUE;
-
-  c:=getconnection;
-  if c=nil then
-  begin
-    {$ifdef windows}
-    if foverlapped then
-      pipe:=CreateFile(pchar('\\.\pipe\'+pipename), GENERIC_READ or GENERIC_WRITE, FILE_SHARE_READ or FILE_SHARE_WRITE, nil, OPEN_EXISTING,  FILE_FLAG_OVERLAPPED, 0)
-    else
-      pipe:=CreateFile(pchar('\\.\pipe\'+pipename), GENERIC_READ or GENERIC_WRITE, FILE_SHARE_READ or FILE_SHARE_WRITE, nil, OPEN_EXISTING,  0, 0);
-    {$endif}
-
-    {$ifdef darwin}
-    pipe:=connectNamedPipe(pipename, timeout);
-    outputdebugstring('pipe='+inttohex(THANDLE(pipe),1));
-    outputdebugstring('INVALID_HANDLE_VALUE='+inttohex(THANDLE(INVALID_HANDLE_VALUE),1));
-    {$endif}
-  end
+  {$ifdef windows}
+  if foverlapped then
+    pipe:=CreateFile(pchar('\\.\pipe\'+pipename), GENERIC_READ or GENERIC_WRITE, FILE_SHARE_READ or FILE_SHARE_WRITE, nil, OPEN_EXISTING,  FILE_FLAG_OVERLAPPED, 0)
   else
-    pipe:=c.connectNamedPipe(pipename, timeout);
+    pipe:=CreateFile(pchar('\\.\pipe\'+pipename), GENERIC_READ or GENERIC_WRITE, FILE_SHARE_READ or FILE_SHARE_WRITE, nil, OPEN_EXISTING,  0, 0);
+  {$endif}
+
+  {$ifdef darwin}
+  pipe:=connectNamedPipe(pipename, timeout);
+  outputdebugstring('pipe='+inttohex(THANDLE(pipe),1));
+  outputdebugstring('INVALID_HANDLE_VALUE='+inttohex(THANDLE(INVALID_HANDLE_VALUE),1));
+  {$endif}
+
 
   fConnected:=THANDLE(pipe)<>THANDLE(INVALID_HANDLE_VALUE);
 

@@ -12,7 +12,7 @@ uses
   windows,
   {$endif}LCLIntf, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ExtCtrls, LResources, Menus, Buttons, CEFuncProc,
-  commonTypeDefs, LCLType, betterControls;
+  commonTypeDefs, LCLType;
 
 const cehotkeycount=32;
 
@@ -21,9 +21,6 @@ type
   { TframeHotkeyConfig }
 
   TframeHotkeyConfig = class(TFrame)
-    btnExcludeProcesses: TButton;
-    cbCenterOnPopup: TCheckBox;
-    cbHideAllWindows: TCheckBox;
     cbStopOnRelease: TCheckBox;
     fhcImageList: TImageList;
     MenuItem1: TMenuItem;
@@ -46,7 +43,6 @@ type
     Label4: TLabel;
     Label5: TLabel;
     PopupMenu1: TPopupMenu;
-    procedure btnExcludeProcessesClick(Sender: TObject);
     procedure Edit1MouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Integer);
     procedure edtSHSpeedChange(Sender: TObject);
@@ -78,8 +74,6 @@ type
   end;
 
 implementation
-
-uses frmExcludeHideUnit;
 
 
 procedure TFrameHotkeyConfig.UpdateSpeed;
@@ -228,18 +222,6 @@ begin
   {$endif}
 end;
 
-procedure TframeHotkeyConfig.btnExcludeProcessesClick(Sender: TObject);
-begin
-  {$ifndef net}
-
-  with tfrmExcludeHide.create(self) do
-  begin
-    showmodal;
-    free;
-  end;
-  {$endif}
-end;
-
 {$ifdef darwin}
 
 function isModifier(k: word): boolean;
@@ -310,8 +292,6 @@ begin
 
   ARect.Left += 2;
   ARect.Right -= 2;
-
-  Canvas.font.color:=clWindowtext;
 
   OldTextStyle := Canvas.TextStyle;
   NewTextStyle.Layout:= tlCenter;

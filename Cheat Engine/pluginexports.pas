@@ -10,7 +10,7 @@ uses {$ifdef darwin}macport,macportdefines,{$endif}
      SyncObjs,dialogs,LCLIntf,classes,autoassembler,
      CEFuncProc,NewKernelHandler,CEDebugger,KernelDebugger, plugin, math,
      debugHelper, debuggertypedefinitions, typinfo, ceguicomponents, strutils,
-     commonTypeDefs, luahandler, lua, betterControls;
+     commonTypeDefs, luahandler, lua;
 
 type TPluginFunc=function(parameters: pointer): pointer;
 function pluginsync(func: TPluginFunc; parameters: pointer): pointer; stdcall;
@@ -1351,9 +1351,7 @@ var plist: TStringlist;
   i,j: integer;
   pname: string;
   compareto: string;
-  {$IFDEF WINDOWS}
   ProcessListInfo: PProcessListInfo;
-  {$ENDIF}
 
   bestpick: record
     i: integer;
@@ -1380,12 +1378,8 @@ begin
       //processname found
       if compareto=pname then
       begin
-        {$IFDEF WINDOWS}
         ProcessListInfo:=PProcessListInfo(plist.Objects[i]);
         result:=ProcessListInfo.processID;
-        {$ELSE}
-        result:=strtoint('$'+copy(plist[i],1,j-1));
-        {$endif}
         exit;
       end;
     end;
@@ -1407,12 +1401,8 @@ begin
       begin
         if j=1 then
         begin
-          {$IFDEF WINDOWS}
           ProcessListInfo:=PProcessListInfo(plist.Objects[i]);
           result:=ProcessListInfo.processID;
-          {$ELSE}
-          result:=strtoint('$'+copy(plist[i],1,j-1));
-          {$ENDIF}
           exit;
         end;
 
@@ -1427,12 +1417,8 @@ begin
 
       if bestpick.i<>-1 then
       begin
-        {$IFDEF WINDOWS}
         ProcessListInfo:=PProcessListInfo(plist.Objects[bestpick.i]);
         result:=ProcessListInfo.processID;
-        {$ELSE}
-        result:=strtoint('$'+copy(plist[i],1,j-1));
-        {$ENDIF}
         exit;
       end;
     end;
@@ -1632,7 +1618,7 @@ var i: integer;
 begin
   for i:=0 to screen.FormCount-1 do
   begin
-    if (copy(screen.forms[i].name,1, 4)<>'UDF_') and ((screen.forms[i] is TCEForm)=false) then //if not a userdefined form
+    if copy(screen.forms[i].name,1, 4)<>'UDF_' then //if not a userdefined form
       screen.Forms[i].Visible:=false;
   end;
 

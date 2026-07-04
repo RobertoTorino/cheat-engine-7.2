@@ -49,29 +49,10 @@ type
   TVQEMapCmp = specialize TLess<PtrUInt>;
   TVQEMap = specialize TMap<PtrUInt, TVirtualQueryExCache, TVQEMapCmp>;
 
-  TCEServerOptionType=(netParent=0, //just a piece of text with child options under it
-                       netBoolean=1, netInteger=2, netFloat=3, netDouble=4, netText=5);
-
-  TCEServerOption=record
-    optname: string;  //this is the internal name of the option
-    parentoptname: string; //if this is a sibling, this holds the parent optname, else empty
-    optdescription: string; //text shown to the user
-    acceptablevalues: string; //allowed values (when set)
-    currentvalue: string; //the current value (1 for true in boolean)
-    optiontype: TCEServerOptionType;
-  end;
-
-  TCEServerOptions=array of TCEServerOption;
-
-
   TCEConnection=class
   private
     socket: cint;
     fConnected: boolean;
-
-    version: integer;
-
-    executesInsideTarget: boolean; //if true, ptrace won't work.  Use sigtrap for debugging
 
     //todo: change rpmcache to a map
     rpmcache: array [0..15] of record //every connection is thread specific, so each thread has it's own rpmcache
@@ -93,8 +74,6 @@ type
     VirtualQueryExCacheMapCS: TCriticalSection;
 
 
-    function receiveString16: string; //read a string that is preceded by a 16 bit length indicator
-
     function receive(buffer: pointer; size: integer): integer;
     function send(buffer: pointer; size: integer): integer;
 
@@ -109,9 +88,6 @@ type
     function Module32Next(hSnapshot: HANDLE; var lpme: MODULEENTRY32; isfirst: boolean=false): BOOL;
     function Module32First(hSnapshot: HANDLE; var lpme: MODULEENTRY32): BOOL;
 
-    function Thread32Next(hSnapshot: HANDLE; var lpte: THREADENTRY32; isfirst: boolean=false): BOOL;
-    function Thread32First(hSnapshot: HANDLE; var lpte: THREADENTRY32): BOOL;
-
     function Process32Next(hSnapshot: HANDLE; var lppe: PROCESSENTRY32; isfirst: boolean=false): BOOL;
     function Process32First(hSnapshot: HANDLE; var lppe: PROCESSENTRY32): BOOL;
     function CreateToolhelp32Snapshot(dwFlags, th32ProcessID: DWORD): HANDLE;
@@ -123,7 +99,6 @@ type
     function VirtualQueryEx(hProcess: THandle; lpAddress: Pointer; var lpBuffer: TMemoryBasicInformation; dwLength: DWORD): DWORD;
     function VirtualQueryEx_StartCache(hProcess: THandle; flags: DWORD): boolean;
     procedure VirtualQueryEx_EndCache(hProcess: THandle);
-    function VirtualProtectEx(hProcess: THandle; lpAddress: Pointer; dwSize, flNewProtect: DWORD; var OldProtect: DWORD): BOOL;
 
     function GetRegionInfo(hProcess: THandle; lpAddress: Pointer; var lpBuffer: TMemoryBasicInformation; dwLength: DWORD; var mapsline: string): DWORD;
 
@@ -137,49 +112,20 @@ type
     function ContinueDebugEvent(hProcess: THandle; threadid: dword; continuemethod: integer): BOOL;
     function SetBreakpoint(hProcess: THandle; threadid: integer; debugregister: integer; address: PtrUInt; bptype: integer; bpsize: integer): boolean;
     function RemoveBreakpoint(hProcess: THandle; threadid: integer; debugregister: integer; wasWatchpoint: boolean): boolean;
-    function AllocateAndGetContext(hProcess: Thandle; threadid: integer): Pointer;
-    function setContext(hProcess: Thandle; threadid: integer; context: pointer; contextsize: integer): boolean;
+    function AllocateAndGetContext(hProcess: Thandle; threadid: integer): pointer;
     function getVersion(var name: string): integer;
-    function getArchitecture(hProcess: THandle): integer;
-    function getABI: integer;
-    function enumSymbolsFromFile(modulepath: string; fileoffset: dword; modulebase: ptruint; callback: TNetworkEnumSymCallback; nameaddendum: string=''): boolean;
+    function getArchitecture: integer;
+    function enumSymbolsFromFile(modulepath: string; modulebase: ptruint; callback: TNetworkEnumSymCallback): boolean;
     function loadModule(hProcess: THandle; modulepath: string): boolean;
-    function loadModuleEx(hProcess: THandle; dlopenaddress: ptruint; modulepath: string): boolean;
     function loadExtension(hProcess: Thandle): boolean;
     function speedhack_setSpeed(hProcess: THandle; speed: single): boolean;
-    procedure setConnectionName(name: string);
-
-    procedure getOptions(var options: TCEServerOptions);
-    function getOption(name: string):string;
-    procedure setOption(name: string; value: string);
-
-    function connectNamedPipe(name: string; timeout:integer=0): HANDLE;
-    function readPipe(h: THandle; destination: pointer; size: integer; timeout:integer=0): boolean;
-    function writePipe(h: THandle; source: pointer; size: integer; timeout:integer=0): boolean;
-
-    function getServerPath: string;
-
-    function isAndroid: boolean;
-
-    function setCurrentPath(path: string): boolean;
-    function getCurrentPath: string;
-    procedure enumfiles(path: string; list: tstrings);
-    function getFilePermissions(path: string; out perms: UINT32): boolean;
-    function setFilePermissions(path: string; perms: UINT32): boolean;
-
-    function getFile(path: string; s: tstream): boolean;
-    function putFile(path: string; s: tstream): boolean;
-
-    function createDir(path: string): boolean;
-    function deleteFile(path: string): boolean;
 
     procedure TerminateServer;
 
+    property connected: boolean read fConnected;
+
     constructor create;
     destructor destroy; override;
-  published
-    property connected: boolean read fConnected;
-    property path: string read getServerPath;
   end;
 
 
@@ -192,7 +138,7 @@ var
 
 implementation
 
-uses elfsymbols, Globals, maps;
+uses elfsymbols, Globals;
 
 const
   CMD_GETVERSION =0;
@@ -232,92 +178,7 @@ const
   //
   CMD_VIRTUALQUERYEXFULL=31;
   CMD_GETREGIONINFO=32; //extended version of VirtualQueryEx which also get the full string
-  CMD_GETABI=33;  //for c-code compilation
 
-  //4
-  CMD_SET_CONNECTION_NAME=34;
-  CMD_CREATETOOLHELP32SNAPSHOTEX =35;
-
-  CMD_CHANGEMEMORYPROTECTION=36;
-  CMD_GETOPTIONS=37;
-  CMD_GETOPTION=38;
-  CMD_SETOPTION=39;
-
-  CMD_PTRACE_MMAP=40;
-
-  CMD_OPENNAMEDPIPE=41;
-  CMD_PIPEREAD=42;
-  CMD_PIPEWRITE=43;
-
-
-  CMD_GETCESERVERPATH=44;
-  CMD_ISANDROID=45;
-
-  CMD_LOADMODULEEX=46;
-
-  CMD_SETCURRENTPATH=47;
-  CMD_GETCURRENTPATH=48;
-  CMD_ENUMFILES=49;
-  CMD_GETFILEPERMISSIONS=50;
-  CMD_SETFILEPERMISSIONS=51;
-  CMD_GETFILE=52;
-  CMD_PUTFILE=53;
-  CMD_CREATEDIR=54;
-  CMD_DELETEFILE=55;
-
-
-
-
-type
-  TLocalModuleListEntry=class
-    baseaddress: ptruint;
-    fileoffset: dword;
-    size: dword;
-    part: integer;
-    name: string;
-  end;
-
-  TLocalThreadListEntry=class
-    threadid: dword;
-    ownerprocessid: dword;
-  end;
-
-
-{  TLocalProcessListEntry=class
-
-  end;}
-
-  TToolhelp32SnapshotInfo=class
-    handle: dword;
-    snapshottype: dword;
-    list: tfplist;
-
-  public
-    constructor create;
-    destructor destroy; override;
-  end;
-
-
-var
-  LocalToolhelpSnapshotsCS: TCriticalSection;
-  LocalToolhelpSnapshots: array of TToolhelp32SnapshotInfo;
-
-constructor TToolhelp32SnapshotInfo.create;
-begin
-  list:=tfplist.create;
-end;
-
-destructor TToolhelp32SnapshotInfo.destroy;
-var i: integer;
-begin
-  for i:=0 to list.count-1 do
-    tobject(list[i]).destroy;
-
-  list.free;
-  list:=nil;
-
-  inherited destroy;
-end;
 
 procedure TCEConnection.TerminateServer;
 var command: byte;
@@ -336,33 +197,9 @@ var CloseHandleCommand: packed record
   end;
 
   r: integer;
-  ths: TToolhelp32SnapshotInfo;
 begin
-  if ((handle shr 24) and $ff)= $cd then  //local fake handle
-  begin
-    try
-      LocalToolhelpSnapshotsCS.enter;
-      try
-        ths:=LocalToolhelpSnapshots[handle and $ffffff];
-        LocalToolhelpSnapshots[handle and $ffffff]:=nil;
-      finally
-        LocalToolhelpSnapshotsCS.Leave;
-      end;
 
-      if ths=nil then
-      begin
-        OutputDebugString('Tried to close invalid fake handle');
-        exit(false);
-      end;
 
-      ths.free;
-      result:=true;
-
-    except
-      result:=false;
-    end;
-  end
-  else
   if ((handle shr 24) and $ff)= $ce then
   begin
     CloseHandleCommand.command:=CMD_CLOSEHANDLE;
@@ -387,74 +224,15 @@ var ModulelistCommand: packed record
   r: packed record
     result: integer;
     modulebase: qword;
-    modulepart: dword;
     modulesize: dword;
-    modulefileoffset: dword;
     stringlength: dword;
   end;
 
   mname: pchar;
-  mnames: string;
-  ths: TToolhelp32SnapshotInfo;
-  index: integer;
-  mle: TLocalModuleListEntry;
+
 begin
 
   result:=false;
-
-  if ((hSnapshot shr 24) and $ff)= $cd then
-  begin
-    //local snapshot
-    LocalToolhelpSnapshotsCS.Enter;
-    try
-      ths:=LocalToolhelpSnapshots[hSnapshot and $ffffff];
-    finally
-      LocalToolhelpSnapshotsCS.Leave;
-    end;
-
-    if ths=nil then
-    begin
-      OutputDebugString('Module32First/Next on an invalid toolhelp handle');
-      exit;
-    end;
-
-    if ths.snapshottype<>TH32CS_SNAPMODULE then exit;
-
-
-    if isfirst then
-      lpme.th32ModuleID:=0;
-
-    if lpme.th32ModuleID>=ths.list.Count then exit(false);
-
-    mle:=TLocalModuleListEntry(ths.list[lpme.th32ModuleID]);
-    lpme.hModule:=mle.baseaddress;
-    lpme.modBaseAddr:=pointer(mle.baseaddress);
-    lpme.modBaseSize:=mle.size;
-    lpme.GlblcntUsage:=mle.part;
-    lpme.ProccntUsage:=mle.fileoffset;
-
-    mnames:=mle.name;
-
-    if mle.part>0 then
-    asm
-    nop
-    end;
-
-    copymemory(@lpme.szExePath[0], @mnames[1], min(length(mnames)+1, MAX_PATH));
-    lpme.szExePath[MAX_PATH-1]:=#0;
-
-    if mle.part<>0 then
-      mnames:=mnames+'.'+inttostr(mle.part);
-
-    copymemory(@lpme.szModule[0], @mnames[1], min(length(mnames)+1, MAX_MODULE_NAME32));
-    lpme.szModule[MAX_MODULE_NAME32-1]:=#0;
-
-
-
-    inc(lpme.th32ModuleID);
-    exit(true);
-  end;
-
 
   if ((hSnapshot shr 24) and $ff)= $ce then
   begin
@@ -466,7 +244,6 @@ begin
     ModulelistCommand.handle:=hSnapshot and $ffffff;
     if send(@ModulelistCommand, sizeof(ModulelistCommand)) > 0 then
     begin
-      ZeroMemory(@r,sizeof(r));
       if receive(@r, sizeof(r))>0 then
       begin
         result:=r.result<>0;
@@ -477,34 +254,17 @@ begin
           receive(mname, r.stringlength);
           mname[r.stringlength]:=#0;
 
-          mnames:=mname;
-
-          if mname<>nil then
-            FreeMemAndNil(mname);
-
           ZeroMemory(@lpme, sizeof(lpme));
           lpme.hModule:=r.modulebase;
           lpme.modBaseAddr:=pointer(r.modulebase);
           lpme.modBaseSize:=r.modulesize;
-          lpme.GlblcntUsage:=r.modulepart;
-          lpme.ProccntUsage:=r.modulefileoffset;
-          {$ifdef darwin}
-          lpme.is64bit:=processhandler.is64Bit;
-          {$endif}
-
-          if r.modulepart>0 then
-          asm
-          nop
-          end;
-
-          copymemory(@lpme.szExePath[0], @mnames[1], min(length(mnames)+1, MAX_PATH));
+          copymemory(@lpme.szExePath[0], mname, min(r.stringlength+1, MAX_PATH));
           lpme.szExePath[MAX_PATH-1]:=#0;
 
-          if r.modulepart<>0 then
-            mnames:=mnames+'.'+inttostr(mle.part);
-
-          copymemory(@lpme.szModule[0], @mnames[1], min(length(mnames)+1, MAX_MODULE_NAME32));
+          copymemory(@lpme.szModule[0], mname, min(r.stringlength+1, MAX_MODULE_NAME32));
           lpme.szModule[MAX_MODULE_NAME32-1]:=#0;
+
+          FreeMemAndNil(mname);
         end;
 
       end;
@@ -517,57 +277,6 @@ function TCEConnection.Module32First(hSnapshot: HANDLE; var lpme: MODULEENTRY32)
 begin
   result:=module32next(hSnapshot, lpme, true);
 end;
-
-function TCEConnection.Thread32Next(hSnapshot: HANDLE; var lpte: THREADENTRY32; isfirst: boolean=false): BOOL;
-var
-  ths: TToolhelp32SnapshotInfo;
-  index: integer;
-  tle: TLocalThreadListEntry;
-begin
-  result:=false;
-
-  if ((hSnapshot shr 24) and $ff)= $cd then
-  begin
-    //local snapshot
-    LocalToolhelpSnapshotsCS.Enter;
-    try
-      ths:=LocalToolhelpSnapshots[hSnapshot and $ffffff];
-    finally
-      LocalToolhelpSnapshotsCS.Leave;
-    end;
-
-    if ths=nil then
-    begin
-      OutputDebugString('Module32First/Next on an invalid toolhelp handle');
-      exit;
-    end;
-
-    if ths.snapshottype<>TH32CS_SNAPTHREAD then exit;
-
-
-    if isfirst then
-      lpte.dwFlags:=0;  //use dwFlags as counter
-
-    if lpte.dwFlags>=ths.list.Count then exit(false);
-
-    tle:=TLocalThreadListEntry(ths.list[lpte.dwFlags]);
-    lpte.cntUsage:=0;
-    lpte.tpDeltaPri:=0;
-    lpte.tpBasePri:=0;
-    lpte.th32OwnerProcessID:=tle.ownerprocessid;
-    lpte.th32ThreadID:=tle.ThreadID;
-    inc(lpte.dwFlags);
-    exit(true);
-  end;
-  //else unhandled.
-
-end;
-
-function TCEConnection.Thread32First(hSnapshot: HANDLE; var lpte: THREADENTRY32): BOOL;
-begin
-  exit(thread32next(hSnapshot, lpte, true));
-end;
-
 
 function TCEConnection.Process32Next(hSnapshot: HANDLE; var lppe: PROCESSENTRY32; isfirst: boolean=false): BOOL;
 var ProcesslistCommand: packed record
@@ -637,162 +346,17 @@ var CTSCommand: packed record
     th32ProcessID: dword;
   end;
 
-  r: integer;
-  r2: packed record
-        result: integer;
-        modulebase: qword;
-        modulepart: dword;
-        modulesize: dword;
-        modulefileoffset: dword;
-        stringlength: dword;
-    end;
-
-  eol: boolean;
-
-  mname: pchar;
-  mnamesize: integer;
-
-  ths: TToolhelp32SnapshotInfo;
-  mle: TLocalModuleListEntry;
-  tle: TLocalThreadListEntry;
-  i: integer;
-
-  threadlist: array of integer;
-
+var r: integer;
 begin
   result:=0;
 
   OutputDebugString('TCEConnection.CreateToolhelp32Snapshot()');
-  CTSCommand.command:=CMD_CREATETOOLHELP32SNAPSHOTEX;
+  CTSCommand.command:=CMD_CREATETOOLHELP32SNAPSHOT;
   CTSCommand.dwFlags:=dwFlags;
   CTSCommand.th32ProcessID:=th32ProcessID;
 
   r:=0;
   if send(@CTSCommand, sizeof(CTSCommand))>0 then
-  begin
-    if (dwFlags and TH32CS_SNAPTHREAD)=TH32CS_SNAPTHREAD then
-    begin
-      //it'll send a list of threadid's now
-      ths:=TToolhelp32SnapshotInfo.create;
-      ths.handle:=0;
-      ths.snapshottype:=TH32CS_SNAPTHREAD;
-
-      LocalToolhelpSnapshotsCS.enter;
-      try
-        for i:=0 to length(LocalToolhelpSnapshots)-1 do
-        begin
-          if LocalToolhelpSnapshots[i]=nil then
-          begin
-            LocalToolhelpSnapshots[i]:=ths;
-            ths.handle:=$cd000000 or i;
-            break;
-          end;
-        end;
-
-        if ths.handle=0 then
-        begin
-          i:=length(LocalToolhelpSnapshots);
-
-          setlength(LocalToolhelpSnapshots,length(LocalToolhelpSnapshots)+1);
-          LocalToolhelpSnapshots[i]:=ths;
-          ths.handle:=$cd000000 or i;
-        end;
-      finally
-        LocalToolhelpSnapshotsCS.leave;
-      end;
-
-      result:=ths.handle;
-
-      if receive(@r, sizeof(r))>0 then
-      begin
-        setlength(threadlist, r);
-        if receive(@threadlist[0],sizeof(integer)*r)>0 then
-        begin
-          for i:=0 to length(threadlist)-1 do
-          begin
-            tle:=TLocalThreadListEntry.create;
-            tle.ownerprocessid:=th32processid;
-            tle.threadid:=threadlist[i];
-            ths.list.add(tle);
-          end;
-        end;
-      end;
-
-
-    end
-    else
-    if (dwFlags and TH32CS_SNAPMODULE)=TH32CS_SNAPMODULE then
-    begin
-      //it'll send me a list of modules now
-
-
-
-      ths:=TToolhelp32SnapshotInfo.create;
-      ths.handle:=0;
-      ths.snapshottype:=TH32CS_SNAPMODULE;
-
-      LocalToolhelpSnapshotsCS.enter;
-      try
-        for i:=0 to length(LocalToolhelpSnapshots)-1 do
-        begin
-          if LocalToolhelpSnapshots[i]=nil then
-          begin
-            LocalToolhelpSnapshots[i]:=ths;
-            ths.handle:=$cd000000 or i;
-            break;
-          end;
-        end;
-
-        if ths.handle=0 then
-        begin
-          i:=length(LocalToolhelpSnapshots);
-
-          setlength(LocalToolhelpSnapshots,length(LocalToolhelpSnapshots)+1);
-          LocalToolhelpSnapshots[i]:=ths;
-          ths.handle:=$cd000000 or i;
-        end;
-      finally
-        LocalToolhelpSnapshotsCS.leave;
-      end;
-
-      result:=ths.handle;
-
-      eol:=false;
-      mnamesize:=512;
-      getmem(mname, mnamesize);
-      while not eol do
-      begin
-        if receive(@r2, sizeof(r2))>0 then
-        begin
-          if r2.stringlength>mnamesize then //needs more memory
-          begin
-            freemem(mname);
-            mnamesize:=r2.stringlength;
-            getmem(mname, mnamesize);
-          end;
-
-
-          receive(mname, r2.stringlength);
-          mname[r2.stringlength]:=#0;
-
-          eol:=r2.result<>1;
-
-          if not eol then
-          begin
-            mle:=TLocalModuleListEntry.create;
-            mle.baseaddress:=r2.modulebase;
-            mle.part:=r2.modulepart;
-            mle.size:=r2.modulesize;
-            mle.fileoffset:=r2.modulefileoffset;
-            mle.name:=mname;
-            ths.list.add(mle);
-          end;
-        end;
-
-
-      end;
-    end
-    else //not handled yet
     if receive(@r, sizeof(r))>0 then
     begin
       if (r>0) then
@@ -800,7 +364,6 @@ begin
 
       result:=r;
     end;
-  end;
 end;
 
 function TCEConnection.CReadProcessMemory(hProcess: THandle; lpBaseAddress: Pointer; lpBuffer: Pointer; nSize: DWORD; var lpNumberOfBytesRead: PTRUINT): BOOL;
@@ -1267,7 +830,6 @@ var
     hProcess: integer;
     preferedBase: qword;
     size: integer;
-    windowsprotection: integer;
   end;
 
   output: UINT64;
@@ -1279,7 +841,6 @@ begin
     input.command:=CMD_ALLOC;
     input.hProcess:=hProcess and $ffffff;
     input.preferedBase:=ptruint(lpAddress);
-    input.windowsprotection:=flProtect;
     input.size:=dwsize;
 
     if send(@input, sizeof(input))>0 then
@@ -1524,58 +1085,8 @@ begin
     else
       result:=windows.VirtualQueryEx(hProcess, lpAddress, lpBuffer, dwLength)
     {$endif};
-  end;
-end;
-
-function TCEConnection.VirtualProtectEx(hProcess: THandle; lpAddress: Pointer; dwSize, flNewProtect: DWORD; var OldProtect: DWORD): BOOL;
-var
-  input: packed record
-    command: byte;
-    handle: integer;
-    address: qword;
-    size: UINT32;
-    newprotect: uint32;
 
   end;
-
-  output: packed record
-    result: uint32;
-    oldprotection: uint32;
-  end;
-begin
-  result:=false;
-
-  if isNetworkHandle(hProcess) then
-  begin
-    input.command:=CMD_CHANGEMEMORYPROTECTION;
-    input.handle:=hProcess and $ffffff;
-    input.address:=qword(lpAddress);
-    input.size:=dwsize;
-    input.newprotect:=flNewProtect;
-    if send(@input, sizeof(input))>0 then
-    begin
-      if receive(@output, sizeof(output))>0 then
-      begin
-        if output.result=0 then
-        begin
-          oldprotect:=output.oldprotection;
-          exit(true);
-        end
-        else
-          exit(false);
-      end
-      else
-      begin
-        OutputDebugString('CMD_CHANGEMEMORYPROTECTION failed');
-      end;
-    end;
-
-  end
-  {$ifdef windows}
-  else
-    result:=windows.VirtualProtectEx(hProcess, lpAddress, dwSize, flNewProtect, @OldProtect);
-  {$endif};
-
 end;
 
 function TCEConnection.GetRegionInfo(hProcess: THandle; lpAddress: Pointer; var lpBuffer: TMemoryBasicInformation; dwLength: DWORD; var mapsline: string): DWORD;
@@ -1805,7 +1316,6 @@ begin
     input.handle:=hProcess and $ffffff;
     input.tid:=threadid;
     input.debugregister:=debugregister;
-
     input.address:=address;
     input.bptype:=bptype;
     input.bpsize:=bpsize;
@@ -1855,56 +1365,30 @@ begin
 
 end;
 
-function TCEConnection.setContext(hProcess: Thandle; threadid: integer; context: pointer; contextsize: integer): boolean;
-var
-  input: packed record
-    command: UINT8;
-    hProcess: uint32;
-    threadid: uint32;
-    contextsize: uint32;
-  end;
-  r: uint32;
-begin
-  result:=false;
-  input.command:=CMD_SETTHREADCONTEXT;
-  input.hProcess:=hProcess and $ffffff;
-  input.threadid:=threadid;
-  input.contextsize:=ContextSize;
-
-  if send(@input, sizeof(input))>0 then
-  begin
-    if send(context, contextsize)>0 then
-    begin
-      if receive(@r,sizeof(r))>0 then
-        result:=r<>0;
-    end;
-  end;
-end;
-
 function TCEConnection.AllocateAndGetContext(hProcess: Thandle; threadid: integer): pointer;
 //get he context and save it in an allocated memory block of variable size. The caller is responsible for freeing this block
-
 var
   Input: packed record
     command: UINT8;
     hprocess: uint32;
     threadid: uint32;
+    ctype: uint32;  //ignored for now
   end;
 
   contextsize: UINT32;
   r: integer;
-
 begin
   result:=nil;
   input.command:=CMD_GETTHREADCONTEXT;
   input.hprocess:=hProcess and $ffffff;
   input.threadid:=threadid;
-
+  input.ctype:=0;
 
   if send(@input, sizeof(input))>0 then
   begin
     if receive(@r, sizeof(r))>0 then
     begin
+
       if (r<>0) and (receive(@contextsize, sizeof(contextsize))>0) then
       begin
         getmem(result,  contextsize);
@@ -1914,8 +1398,10 @@ begin
           result:=nil;
         end;
       end;
+
     end;
   end;
+
 end;
 
 function TCEConnection.getVersion(var name: string): integer;
@@ -1933,45 +1419,23 @@ begin
   begin
     if receive(@CeVersion, sizeof(CeVersion))>0 then
     begin
-      getmem(_name, CeVersion.stringsize+1);
+      getmem(_name, CeVersion.stringsize);
       receive(_name, CeVersion.stringsize);
-      _name[CeVersion.stringsize]:=#0;
 
       name:=_name;
       FreeMemAndNil(_name);
 
-      result:=CeVersion.version;
-
-      if copy(_name,1,3)='lib' then
-        executesInsideTarget:=true;
-
-
-      self.version:=result;
+      result:=length(name);
     end;
   end;
 end;
 
-function TCEConnection.getArchitecture(hProcess: THandle): integer;
-var input: packed record
-    command: byte;
-    hprocess: uint32;
-  end;
-  r: byte;
-begin
-  result:=0;
-  input.command:=CMD_GETARCHITECTURE;
-  input.hprocess:=hProcess and $ffffff;
-  if send(@input, sizeof(input))>0 then
-    if receive(@r, 1)>0 then
-      result:=r;
-end;
-
-function TCEConnection.getABI: integer;
+function TCEConnection.getArchitecture: integer;
 var command: byte;
   r: byte;
 begin
   result:=0;
-  command:=CMD_GETABI;
+  command:=CMD_GETARCHITECTURE;
   if send(@command, 1)>0 then
     if receive(@r, 1)>0 then
       result:=r;
@@ -2021,11 +1485,10 @@ begin
 
 end;
 
-function TCEConnection.enumSymbolsFromFile(modulepath: string; fileoffset: dword; modulebase: ptruint; callback: TNetworkEnumSymCallback; nameaddendum: string=''): boolean;
+function TCEConnection.enumSymbolsFromFile(modulepath: string; modulebase: ptruint; callback: TNetworkEnumSymCallback): boolean;
 type
   TCeGetSymbolList=packed record
     command: byte;
-    fileoffset: uint32;
     symbolpathsize: uint32;
     path: array [0..0] of char;
   end;
@@ -2079,18 +1542,13 @@ begin
 
 
 
-  msgsize:=1+4+4+length(modulepath);
+  msgsize:=5+length(modulepath);
   getmem(msg, msgsize);
 
   msg^.command:=CMD_GETSYMBOLLISTFROMFILE;
-  msg^.fileoffset:=fileoffset;
   msg^.symbolpathsize:=length(modulepath);
   CopyMemory(@msg^.path, @modulepath[1], length(modulepath));
 
-  if fileoffset<>0 then
-  asm
-  nop
-  end;
 
   if send(msg,  msgsize)>0 then
   begin
@@ -2160,8 +1618,8 @@ begin
                   end
                   else
                   begin
-                    if (callback(shortenedmodulename+nameaddendum, symname, modulebase+currentsymbol^.address, currentsymbol^.size, false) and
-                        callback(modulename+nameaddendum, symname, modulebase+currentsymbol^.address, currentsymbol^.size, true))=false then
+                    if (callback(shortenedmodulename, symname, modulebase+currentsymbol^.address, currentsymbol^.size, false) and
+                        callback(modulename, symname, modulebase+currentsymbol^.address, currentsymbol^.size, true))=false then
                       break;
                   end;
                 end;
@@ -2184,43 +1642,6 @@ begin
 
 end;
 
-function TCEConnection.loadModuleEx(hProcess: THandle; dlopenaddress: ptruint; modulepath: string): boolean;
-type
-  TInput=packed record
-    command: uint8;
-    handle: uint32;
-    dlopenaddress: uint64;
-    modulepathlength: uint32;
-    modulename: packed record end;
-  end;
-  PInput=^TInput;
-
-var
-  input: Pinput;
-  r:uint64;
-begin
-  result:=false;
-  if isNetworkHandle(hProcess) then
-  begin
-    getmem(input, sizeof(TInput)+length(modulepath));
-
-    input^.command:=CMD_LOADMODULEEX;
-    input^.handle:=hProcess and $ffffff;
-    input^.dlopenaddress:=dlopenaddress;
-    input^.modulepathlength:=Length(modulepath);
-    CopyMemory(@input^.modulename, @modulepath[1], length(modulepath));
-
-    if send(input,  sizeof(TInput)+length(modulepath))>0 then
-    begin
-      receive(@r, sizeof(r));
-      result:=r<>0;
-    end;
-
-    FreeMemAndNil(input);
-
-  end;
-end;
-
 function TCEConnection.loadModule(hProcess: THandle; modulepath: string): boolean;
 type
   TInput=packed record
@@ -2233,24 +1654,21 @@ type
 
 var
   input: Pinput;
-  r:uint64;
+  r:uint32;
 begin
-  OutputDebugString('TCEConnection.loadModule('+modulepath+')');
   result:=false;
-   if isNetworkHandle(hProcess) then
+  if isNetworkHandle(hProcess) then
   begin
-    getmem(input, sizeof(TInput)+length(modulepath)+1);
+    getmem(input, sizeof(TInput)+length(modulepath));
 
     input^.command:=CMD_LOADMODULE;
     input^.handle:=hProcess and $ffffff;
-    input^.modulepathlength:=Length(modulepath)+1;
-    CopyMemory(@input^.modulename, @modulepath[1], length(modulepath)+1); //also include 0 terminator
+    input^.modulepathlength:=Length(modulepath);
+    CopyMemory(@input^.modulename, @modulepath[1], length(modulepath));
 
-    if send(input,  sizeof(TInput)+length(modulepath)+1)>0 then
+    if send(@input,  sizeof(TInput)+length(modulepath))>0 then
     begin
       receive(@r, sizeof(r));
-
-      OutputDebugString('CMD_LOADMODULE returned '+r.ToString);
       result:=r<>0;
     end;
 
@@ -2310,355 +1728,6 @@ begin
   end;
 end;
 
-procedure TCEConnection.setConnectionName(name: string);
-type
-  TInput=packed record
-    command: uint8;
-    namelength: uint32;
-    name: packed record end;
-  end;
-  PInput=^TInput;
-
-var
-  input: Pinput;
-  ignored: string;
-begin
-  if (getVersion(ignored)>=4) then
-  begin
-    getmem(input, sizeof(TInput)+length(name));
-    input^.command:=CMD_SET_CONNECTION_NAME;
-    input^.namelength:=length(name);
-    copymemory(@input^.name, @name[1], length(name));
-
-    send(input, sizeof(TInput)+length(name));
-  end;
-end;
-
-procedure TCEConnection.getOptions(var options: TCEServerOptions);
-var
-  command: uint8;
-  optioncount: UINT16;
-  i: integer;
-
-  b: byte;
-  t: integer;
-
-begin
-  command:=CMD_GETOPTIONS;
-  send(@command,1);
-  receive(@optioncount,sizeof(optioncount));
-
-  setlength(options, optioncount);
-  for i:=0 to optioncount-1 do
-  begin
-    options[i].optname:=receiveString16;
-    options[i].parentoptname:=receiveString16;
-    options[i].optdescription:=receiveString16;
-    options[i].acceptablevalues:=receiveString16;
-    options[i].currentvalue:=receiveString16;
-
-    receive(@t, sizeof(t));
-    options[i].optiontype:=TCEServerOptionType(t);
-  end;
-end;
-
-function TCEConnection.getOption(name: string): string;
-var
-  buf: tmemorystream;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_GETOPTION);
-  buf.WriteWord(length(name));
-  buf.WriteBuffer(name[1],length(name));
-
-  send(buf.Memory, buf.Size);
-  buf.free;
-
-  result:=receiveString16;
-end;
-
-procedure TCEConnection.setOption(name: string; value: string);
-var
-  buf: tmemorystream;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_SETOPTION);
-  buf.WriteWord(length(name));
-  buf.WriteBuffer(name[1],length(name));
-  buf.WriteWord(length(value));
-  if length(value)>0 then
-    buf.WriteBuffer(value[1], length(value));
-
-  send(buf.Memory, buf.Size);
-  buf.free;
-end;
-
-function TCEConnection.connectNamedPipe(name: string; timeout:integer=0): HANDLE;
-var
-  buf: tmemorystream;
-  r: uint32;
-begin
-  buf:=tmemorystream.Create;
-  buf.WriteByte(CMD_OPENNAMEDPIPE);
-  buf.WriteWord(length(name));
-  buf.WriteBuffer(name[1],length(name));
-  buf.WriteDWord(timeout);
-  send(buf.memory, buf.size);
-  buf.free;
-
-  receive(@r,sizeof(r));
-
-  if r<>0 then
-    result:=$ce000000 or r
-  else
-    result:=INVALID_HANDLE_VALUE;
-end;
-
-function TCEConnection.readPipe(h: THandle; destination: pointer; size: integer; timeout:integer=0): boolean;
-var
-  input: packed record
-    command: byte;
-    h: uint32;
-    size: uint32;
-    timeout: uint32;
-  end;
-
-  actualsize: int32;
-begin
-  if isNetworkHandle(h) then
-  begin
-    h:=h and $ffffff;
-
-    input.command:=CMD_PIPEREAD;
-    input.h:=h;
-    input.size:=size;
-    input.timeout:=timeout;
-    send(@input, sizeof(input));
-
-    receive(@actualsize, sizeof(actualsize));
-    if actualsize>size then
-    begin
-      //oh no....
-      fConnected:=false;
-      if socket<>0 then
-        CloseSocket(socket);
-
-      socket:=0;
-
-      exit(false);
-    end;
-
-    receive(destination, actualsize);
-
-    result:=actualsize=size;
-  end
-  else
-    result:=false;
-end;
-
-function TCEConnection.writePipe(h: THandle; source: pointer; size: integer; timeout:integer=0): boolean;
-var
-  buf: tmemorystream;
-  c: int32;
-begin
-  if isNetworkHandle(h) then
-  begin
-    h:=h and $ffffff;
-
-    buf:=tmemorystream.create;
-    buf.WriteByte(CMD_PIPEWRITE);
-    buf.WriteDWord(h);
-    buf.writeDword(size);
-    buf.writeDword(timeout);
-    buf.WriteBuffer(source^,size);
-    send(buf.memory, buf.size);
-    buf.free;
-
-    receive(@c,sizeof(c));
-
-    result:=c=size;
-
-  end
-  else
-    result:=false;
-end;
-
-function TCEConnection.getServerPath: string;
-var c: byte;
-begin
-  c:=CMD_GETCESERVERPATH;
-  send(@c,1);
-  result:=receiveString16;
-end;
-
-function TCEConnection.isAndroid: boolean;
-var command, r: byte;
-begin
-  command:=CMD_ISANDROID;
-  send(@command,1);
-  receive(@r,1);
-  result:=r<>0;
-end;
-
-function TCEConnection.setCurrentPath(path: string): boolean;
-var buf: Tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.writebyte(CMD_SETCURRENTPATH);
-  buf.WriteWord(length(path));
-  buf.WriteBuffer(path[1],word(length(path)));
-  send(buf.Memory, buf.Size);
-
-  buf.free;
-  receive(@r,1);
-
-  result:=r<>0;
-end;
-
-function TCEConnection.getCurrentPath: string;
-var command: byte;
-begin
-  command:=CMD_GETCURRENTPATH;
-  send(@command,1);
-  result:=receiveString16;
-end;
-
-procedure TCEConnection.enumfiles(path: string; list: tstrings);
-var buf: tmemorystream;
-  filecount: uint32;
-  i: uint32;
-  s: string;
-  t: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_ENUMFILES);
-  buf.writeword(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  send(buf.memory,buf.size);
-  buf.free;
-
-  list.clear;
-  repeat
-    s:=receivestring16;
-
-    if s<>'' then
-    begin
-      receive(@t,1);
-      list.AddObject(s, tobject(pointer(t)));
-    end;
-  until s='';
-end;
-
-function TCEConnection.getFilePermissions(path: string; out perms: UINT32): boolean;
-var
-  buf: tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.Writebyte(CMD_GETFILEPERMISSIONS);
-  buf.writeword(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  send(buf.memory,buf.size);
-  buf.free;
-
-  receive(@r,1);
-  if r<>0 then
-    receive(@perms, sizeof(perms));
-
-  result:=r<>0;
-end;
-
-function TCEConnection.setFilePermissions(path: string; perms: UINT32): boolean;
-var
-  buf: tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.Writebyte(CMD_SETFILEPERMISSIONS);
-  buf.writeword(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  buf.writedword(perms);
-  send(buf.memory,buf.size);
-  buf.free;
-
-  receive(@r,1);
-  result:=r<>0;
-end;
-
-
-function TCEConnection.getFile(path: string; s: tstream): boolean;
-var
-  buf: tmemorystream;
-  filelength: uint32; //do not bother with 4GB+ files...
-  f: pointer;
-begin
-  buf:=tmemorystream.create;
-  buf.writeByte(CMD_GETFILE);
-  buf.writeword(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  send(buf.memory,buf.size);
-  buf.free;
-
-  receive(@filelength,sizeof(filelength));
-  if filelength<>$ffffffff then
-  begin
-    getmem(f,filelength);
-    receive(f,filelength);
-    s.Position:=0;
-    s.Size:=0;
-    s.WriteBuffer(f^,filelength);
-    freemem(f);
-  end;
-
-  result:=filelength<>$ffffffff;
-end;
-
-function TCEConnection.putFile(path: string; s: tstream): boolean;
-var
-  buf: tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_PUTFILE);
-  buf.WriteWord(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  buf.WriteDWord(s.Size);
-  buf.CopyFrom(s,0);
-  send(buf.Memory,buf.size);
-
-  receive(@r,1);
-  result:=r<>0;
-end;
-
-function TCEConnection.createDir(path: string): boolean;
-var
-  buf: tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_CREATEDIR);
-  buf.WriteWord(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  send(buf.Memory,buf.size);
-  receive(@r,1);
-  result:=r<>0;
-end;
-
-function TCEConnection.deleteFile(path: string): boolean;
-var
-  buf: tmemorystream;
-  r: byte;
-begin
-  buf:=tmemorystream.create;
-  buf.WriteByte(CMD_DELETEFILE);
-  buf.WriteWord(length(path));
-  buf.writebuffer(path[1],word(length(path)));
-  send(buf.Memory,buf.size);
-  receive(@r,1);
-  result:=r<>0;
-end;
-
 function TCEConnection.isNetworkHandle(handle: THandle): boolean;
 begin
   result:=((handle shr 24) and $ff)= $ce;
@@ -2666,14 +1735,11 @@ end;
 
 function TCEConnection.send(buffer: pointer; size: integer): integer;
 var i: integer;
-  B: BOOL=TRUE;
 begin
   result:=0;
-
-
   while (result<size) do
   begin
-    i:=fpsend(socket, pointer(ptruint(buffer)+result), size-result, 0);
+    i:=fpsend(socket, pointer(ptruint(buffer)+result), size, 0);
     if i<=0 then
     begin
       OutputDebugString('Error during send');
@@ -2723,21 +1789,6 @@ begin
   //{$endif}
 end;
 
-function TCEConnection.receiveString16: string;
-var
-  l: uint16;
-  r: pchar;
-begin
-  receive(@l,sizeof(l));
-  if l=0 then exit('');
-
-  getmem(r,l);
-  receive(r,l);
-  r[l]:=#0;
-  result:=r;
-  freemem(r);
-end;
-
 constructor TCEConnection.create;
 var SockAddr: TInetSockAddr;
   retry: integer;
@@ -2777,11 +1828,7 @@ begin
   while not (fConnected) and (retry<5) do
   begin
     if fpconnect(socket, @SockAddr, sizeof(SockAddr)) >=0 then
-    begin
-      b:=TRUE;
-      fpsetsockopt(socket, IPPROTO_TCP, TCP_NODELAY, @B, sizeof(B)); //just to be sure
-      fConnected:=true;
-    end
+      fConnected:=true
     else
     begin
       inc(retry);
@@ -2795,7 +1842,7 @@ end;
 
 destructor TCEConnection.destroy;
 begin
-  if not ((socket=cint(INVALID_SOCKET)) or (socket=0)) then
+  if socket<>cint(INVALID_SOCKET) then
     CloseSocket(socket);
 
   if VirtualQueryExCacheMap<>nil then
@@ -2808,12 +1855,6 @@ begin
     WriteProcessMemoryBufferCS.free;
 
 end;
-
-initialization
-  LocalToolhelpSnapshotsCS:=TCriticalSection.create;
-
-finalization
-  LocalToolhelpSnapshotsCS.free;
 
 end.
 

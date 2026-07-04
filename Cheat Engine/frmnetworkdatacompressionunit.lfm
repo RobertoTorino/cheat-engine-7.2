@@ -6,9 +6,8 @@ object frmNetworkDataCompression: TfrmNetworkDataCompression
   Caption = 'Compression level'
   ClientHeight = 235
   ClientWidth = 326
-  OnShow = FormShow
   Position = poScreenCenter
-  LCLVersion = '2.2.2.0'
+  LCLVersion = '1.6.0.4'
   object Label1: TLabel
     Left = 0
     Height = 60
@@ -61,7 +60,7 @@ object frmNetworkDataCompression: TfrmNetworkDataCompression
     Left = 181
     Height = 15
     Top = 64
-    Width = 96
+    Width = 95
     BorderSpacing.Left = 4
     BorderSpacing.Top = 4
     Caption = 'Max Compression'

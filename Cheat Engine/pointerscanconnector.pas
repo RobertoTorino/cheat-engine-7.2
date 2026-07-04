@@ -178,7 +178,6 @@ var
 
   wait: boolean;
 begin
-  SetThreadDebugName(handle,'TPointerscanConnector');
   i:=0;
   while not terminated do
   begin

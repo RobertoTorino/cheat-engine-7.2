@@ -14,7 +14,7 @@ uses
   LCLIntf, LMessages, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ComCtrls, ExtCtrls, LResources, EditBtn, Buttons, Contnrs,
   CEFuncProc, NewKernelHandler, symbolhandler, multilineinputqueryunit,
-  registry, resolve, math, PointerscanSettingsIPConnectionList, types, commonTypeDefs, betterControls;
+  registry, resolve, math, PointerscanSettingsIPConnectionList, types, commonTypeDefs;
 
 
 type
@@ -84,7 +84,6 @@ type TOffsetEntry=class(Tedit)
     procedure setOffset(x: dword);
   protected
     procedure KeyPress(var Key: Char); override;
-    procedure SetParent(NewParent: TWinControl); override;
   public
     constructor create(AOwner: TComponent); override;
   published
@@ -122,7 +121,6 @@ type
     cbShowAdvancedOptions: TCheckBox;
     cbAddress: TComboBox;
     cbNegativeOffsets: TCheckBox;
-    cbScanResidentMemory: TCheckBox;
     ComboBox1: TComboBox;
     editMaxLevel: TEdit;
     editStructsize: TEdit;
@@ -224,13 +222,9 @@ type
     codescan: boolean;
     threadcount: integer;
 
-    maxOffsetDeviation: integer;
-
 
     baseAddressRange: TComponentList;
 
-    lblOffsetListMaxDeviation: TLabel;
-    edtOffsetListMaxDeviation: tedit;
     offsetlist: TComponentList;
     btnAddOffset: TButton;
     btnRemoveOffset: TButton;
@@ -255,7 +249,7 @@ var frmpointerscannersettings: tfrmpointerscannersettings;
 implementation
 
 uses MainUnit, {$ifdef windows}frmMemoryAllocHandlerUnit,{$endif} MemoryBrowserFormUnit, ProcessHandlerUnit,
-  Globals, parsers{$ifdef windows}, DPIHelper{$endif}, mainunit2;
+  Globals, parsers{$ifdef windows}, DPIHelper{$endif};
 
 
 
@@ -288,9 +282,6 @@ resourcestring
   rsLastOffset = 'Last offset';
   rsHasNotBeenGivenAValidAddress = '%s has not been given a valid address';
   rsLimitScanToSpecifiedRegionFile = 'Limit scan to specified region file';
-  rsMaxDeviation = 'Max deviation';
-  rsMaxDeviationExplentation = 'The maximum offset size by which the ending '
-    +'offset can differ';
 
 
 //helper
@@ -384,7 +375,7 @@ begin
   //cbAddress.clientwidth:=tcustomform(aowner).canvas.TextWidth('DDDDDDDDDDDD');
   cbAddress.anchors:=[aktop, akright];
   cbAddress.BorderSpacing.Right:=8;
-  cbAddress.style:=csOwnerDrawEditableFixed;
+  cbAddress.style:=csOwnerDrawFixed;
   cbAddress.OnDrawItem:=cbAddressDrawItem;
   cbAddress.ItemHeight:=TfrmPointerScannerSettings(TPointerFileList(aowner).Owner).cbAddress.ItemHeight;
   //cbAddress.Height:=btnDelete.Height;
@@ -507,9 +498,6 @@ begin
 
   if assigned(fonsetfilename) then
     fonSetFileName(self);
-
-  if (cbAddress.Text='') and (cbAddress.items.count=1) then
-    cbAddress.ItemIndex:=0;
 end;
 
 
@@ -696,14 +684,6 @@ begin
     key:=#0;
 end;
 
-procedure TOffsetEntry.SetParent(NewParent: TWinControl);
-begin
-  inherited SetParent(newparent);
-
-  if (newparent<>nil) and (newparent is TCustomControl) then
-    Constraints.MinWidth:=TCustomControl(newparent).canvas.TextWidth(' XXX ');
-end;
-
 function TOffsetEntry.getOffset: dword;
 var o: integer;
 begin
@@ -723,9 +703,6 @@ var
   comparecount: integer=0;
   reg: TRegistry=nil;
 begin
-  if edtOffsetListMaxDeviation<>nil then
-    maxOffsetDeviation:=strtoint('$'+edtOffsetListMaxDeviation.Text);
-
   if cbMaxOffsetsPerNode.checked then
   begin
     maxOffsetsPerNode:=strtoint(edtMaxOffsetsPerNode.text);
@@ -1002,33 +979,6 @@ begin
     btnAddOffset.Width:=i;
     btnRemoveOffset.Width:=i;
 
-    lblOffsetListMaxDeviation:=TLabel.create(Self);
-    lblOffsetListMaxDeviation.parent:=panel10;
-    lblOffsetListMaxDeviation.Caption:=rsMaxDeviation;
-    lblOffsetListMaxDeviation.AutoSize:=true;
-    lblOffsetListMaxDeviation.AnchorSideLeft.Control:=cbMustEndWithSpecificOffset;
-    lblOffsetListMaxDeviation.AnchorSideLeft.Side:=asrRight;
-    lblOffsetListMaxDeviation.BorderSpacing.Left:=8;
-
-
-    edtOffsetListMaxDeviation:=TEdit.Create(self);
-    edtOffsetListMaxDeviation.parent:=panel10;
-    edtOffsetListMaxDeviation.AnchorSideLeft.Control:=lblOffsetListMaxDeviation;
-    edtOffsetListMaxDeviation.AnchorSideLeft.Side:=asrLeft;
-    edtOffsetListMaxDeviation.AnchorSideTop.Control:=offsetentry;
-    edtOffsetListMaxDeviation.AnchorSideTop.Side:=asrtop;
-    edtOffsetListMaxDeviation.Text:='0';
-    edtOffsetListMaxDeviation.Hint:=rsMaxDeviationExplentation;
-    edtOffsetListMaxDeviation.ShowHint:=true;
-
-    edtOffsetListMaxDeviation.Constraints.MinWidth:=canvas.TextWidth(' xxx ');
-
-    lblOffsetListMaxDeviation.AnchorSideBottom.Control:=edtOffsetListMaxDeviation;
-    lblOffsetListMaxDeviation.AnchorSideBottom.Side:=asrTop;
-
-    lblOffsetListMaxDeviation.Anchors:=[akLeft, akBottom];
-    edtOffsetListMaxDeviation.Anchors:=[akTop, akLeft];
-
   end
   else
   begin
@@ -1038,16 +988,6 @@ begin
     btnAddOffset.Visible:=false;
     btnRemoveOffset.Visible:=false;
     lblInfoLastOffset.Visible:=false;
-
-    if edtOffsetListMaxDeviation<>nil then
-      edtOffsetListMaxDeviation.free;
-
-    if lblOffsetListMaxDeviation<>nil then
-      lblOffsetListMaxDeviation.free;
-
-    edtOffsetListMaxDeviation:=nil;
-    lblOffsetListMaxDeviation:=nil;
-
   end;
 
   updatepositions;
@@ -1106,9 +1046,6 @@ begin
         begin
           tstrings(cbAddress.tag).LoadFromFile(odLoadPointermap.FileName+'.addresslist');
           UpdateAddressList(cbAddress);
-
-          if (cbAddress.Text='') and (cbAddress.Items.Count=1) then
-            cbAddress.ItemIndex:=0;
         end;
 
       end
@@ -1196,7 +1133,7 @@ begin
     reg.RootKey := HKEY_CURRENT_USER;
 
 
-    if Reg.OpenKey('\Software\'+strCheatEngine+'\'+ClassName, true) then
+    if Reg.OpenKey('\Software\Cheat Engine\'+ClassName, true) then
     begin
       reg.WriteBool('Advanced', cbShowAdvancedOptions.checked);
       reg.WriteBool('warnedAboutDisablingInstantRescan', warnedAboutDisablingInstantRescan);
@@ -1209,7 +1146,7 @@ begin
 
     end;
 
-    if Reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeList', false) then
+    if Reg.OpenKey('\Software\Cheat Engine\PSNNodeList', false) then
     begin
       oldlist:=tstringlist.create;
       try
@@ -1228,7 +1165,7 @@ begin
     begin
       if iplist[i].host<>'' then
       begin
-        if Reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeList\'+iplist[i].host+':'+iplist[i].port,true) then
+        if Reg.OpenKey('\Software\Cheat Engine\PSNNodeList\'+iplist[i].host+':'+iplist[i].port,true) then
         begin
           reg.WriteString('Password', iplist[i].password);
           reg.WriteBool('StableConnection', iplist[i].stable);
@@ -1364,7 +1301,6 @@ var
   i: integer;
   host, port: string;
 begin
-  panel3.color:=clWindow;
   ComboBox1.Items.Clear;
   with ComboBox1.items do
   begin
@@ -1395,7 +1331,7 @@ begin
   reg:=tregistry.Create;
   Reg.RootKey := HKEY_CURRENT_USER;
 
-  if Reg.OpenKey('\Software\'+strCheatEngine+'\'+ClassName, false) then
+  if Reg.OpenKey('\Software\Cheat Engine\'+ClassName, false) then
   begin
     if reg.ValueExists('Advanced') then
       cbShowAdvancedOptions.checked:=reg.ReadBool('Advanced');
@@ -1411,7 +1347,7 @@ begin
 
   end;
 
-  if Reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeList', false) then
+  if Reg.OpenKey('\Software\Cheat Engine\PSNNodeList', false) then
   begin
     list:=tstringlist.create;
     try
@@ -1422,7 +1358,7 @@ begin
 
     for i:=0 to list.count-1 do
     begin
-      if reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeList\'+list[i], false) then
+      if reg.OpenKey('\Software\Cheat Engine\PSNNodeList\'+list[i], false) then
       begin
         while iplist.count<=i do
           iplist.add;

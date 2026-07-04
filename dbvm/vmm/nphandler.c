@@ -61,12 +61,12 @@ void NPMode1CloakSetState(pcpuinfo currentcpuinfo, int state)
   for (i=0; i<512; i++)
   {
     //PML4:
-    if (np_pml4table[i].P)
+    if (np_pml4table[pml4index].P)
     {
       if (i==pml4index)
       {
         QWORD i2;
-        QWORD i2s=(QWORD)pml4index << 9;
+        QWORD i2s=pml4index << 9;
 
         for (i2=i2s; i2<i2s+512; i2++)
         {
@@ -76,7 +76,7 @@ void NPMode1CloakSetState(pcpuinfo currentcpuinfo, int state)
             if (i2==PageDirPtrIndexFull)
             {
               QWORD i3;
-              QWORD i3s=((QWORD)PageDirPtrIndexFull << 9);
+              QWORD i3s=(PageDirPtrIndexFull << 9);
               for (i3=i3s; i3<i3s+512; i3++)
               {
                 //PageDir
@@ -85,7 +85,7 @@ void NPMode1CloakSetState(pcpuinfo currentcpuinfo, int state)
                   if (i3==PageDirIndexFull)
                   {
                     QWORD i4;
-                    QWORD i4s=((QWORD)PageDirIndexFull << 9);
+                    QWORD i4s=(PageDirIndexFull << 9);
                     for (i4=i4s; i4<i4s+512; i4++)
                     {
                       //Page table
@@ -332,14 +332,11 @@ QWORD NPMapPhysicalMemory(pcpuinfo currentcpuinfo, QWORD physicalAddress, int fo
     else
       cloakdata=addresslist_find(CloakedPagesList, physicalAddress & MAXPHYADDRMASKPB);
 
-
-
     if (cloakdata==NULL)
     {
 
       if (currentcpuinfo->eptUpdated==0) //if it's not due to a pending EPT update then make it accessible (just to prevent issues)
       {
-        nosendchar[getAPICID()]=0;
         sendstringf("%d(%d): Not cloaked and the memorymap isn't updating. Restoring\n", getcpunr(), currentcpuinfo->cpunr);
         *(QWORD*)pagetable=physicalAddress & MAXPHYADDRMASKPB;
         pagetable->P=1;
@@ -376,7 +373,7 @@ VMSTATUS handleNestedPagingFault(pcpuinfo currentcpuinfo, VMRegisters *vmregiste
 {
   //handle the paging event
 
-  nosendchar[getAPICID()]=1;
+  nosendchar[getAPICID()]=0;
   QWORD PhysicalAddress=currentcpuinfo->vmcb->EXITINFO2;
   QWORD ErrorInfo=currentcpuinfo->vmcb->EXITINFO1;
 

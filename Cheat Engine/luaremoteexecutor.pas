@@ -391,7 +391,8 @@ constructor TRemoteExecutor.create;
 var
   h: THandle;
 
-  disableinfo: TDisableInfo;
+  allocs: TCEAllocArray;
+  exceptionlist: TCEExceptionListArray;
   executorThreadID: dword;
   script: TStringlist=nil;
 begin
@@ -421,7 +422,6 @@ begin
 
 
   //inject the executor code
-  disableinfo:=TDisableInfo.create;
   script:=tstringlist.create;
   try
     script.add('alloc(Executor,2048)');
@@ -591,10 +591,10 @@ begin
     //debug:
    // clipboard.AsText:=script.text;
 
-    if autoAssemble(script,false,true,false,false,disableinfo) then
+    if autoAssemble(script,false,true,false,false,allocs,exceptionlist) then
     begin
       //create thread
-      ExecutorThreadExecMemory:=disableinfo.allocs[0].address;
+      ExecutorThreadExecMemory:=allocs[0].address;
       ExecutorThreadHandle:=CreateRemoteThread(processhandle,nil,0,pointer(ExecutorThreadExecMemory), pointer(remoteMemMapHandle),0,executorThreadID);
 
       if (ExecutorThreadHandle=0) or (ExecutorThreadHandle=INVALID_HANDLE_VALUE) then
@@ -606,7 +606,6 @@ begin
 
   finally
     script.free;
-    disableinfo.free;
   end;
   {$endif}
 end;
@@ -856,12 +855,12 @@ begin
       end;
 
       if (lua_gettop(L)>=3) and (not lua_isnil(L,3)) then
-        timeout:=lua_tointeger(L,3)
+        timeout:=lua_tointeger(L,2)
       else
         timeout:=INFINITE;
 
       if (lua_gettop(L)>=4) and (not lua_isnil(L,4)) then
-        waittilldone:=not lua_toboolean(L,4)
+        waittilldone:=not lua_toboolean(L,3)
       else
         waittilldone:=true;
 

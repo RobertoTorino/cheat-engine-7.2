@@ -5,7 +5,7 @@ unit LuaFindDialog;
 interface
 
 uses
-  Classes, SysUtils, dialogs, luaclass, lua, lauxlib, luahandler, betterControls;
+  Classes, SysUtils, dialogs, luaclass, lua, lauxlib, luahandler;
 
 procedure initializeLuaFindDialog;
 

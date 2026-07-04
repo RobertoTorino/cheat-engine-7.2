@@ -22,17 +22,13 @@ uses
 
 type
   TSystemArchitecture=(archX86=0, archArm=1);
-  TOperatingsystemABI=(abiWindows=0, abiSystemV=1);
 
 type TProcessHandler=class
   private
     fis64bit: boolean;
-    fIsAndroid: boolean;
     fprocesshandle: THandle;
     fpointersize: integer;
     fSystemArchitecture: TSystemArchitecture;
-    fOSABI: TOperatingsystemABI;  //for c-code
-    fHexDigitPreference: integer;
     procedure setIs64bit(state: boolean);
     procedure setProcessHandle(processhandle: THandle);
   public
@@ -42,14 +38,10 @@ type TProcessHandler=class
     procedure Open;
     function isNetwork: boolean;  //perhaps name it isLinux ?
     procedure overridePointerSize(newsize: integer);
-
     property is64Bit: boolean read fIs64Bit write setIs64bit;
-    property isAndroid: boolean read fIsAndroid;
     property pointersize: integer read fPointersize;
     property processhandle: THandle read fProcessHandle write setProcessHandle;
-    property SystemArchitecture: TSystemArchitecture read fSystemArchitecture write fSystemArchitecture;
-    property OSABI: TOperatingsystemABI read fOSABI;
-    property hexdigitpreference: integer read fHexDigitPreference;
+    property SystemArchitecture: TSystemArchitecture read fSystemArchitecture;
 end;
 
 
@@ -64,8 +56,7 @@ implementation
 {$ifdef jni}
 uses networkinterface, networkInterfaceApi;
 {$else}
-uses LuaHandler, mainunit, networkInterface, networkInterfaceApi, ProcessList, lua,
-  FileUtil, globals;
+uses LuaHandler, mainunit, {$ifdef windows}networkinterface, networkInterfaceApi,{$endif} ProcessList, lua, FileUtil;
 {$endif}
 
 procedure TProcessHandler.overridePointerSize(newsize: integer);
@@ -75,27 +66,33 @@ end;
 
 function TProcessHandler.isNetwork: boolean;
 begin
+  {$ifdef windows}
   result:=(((processhandle shr 24) and $ff)=$ce) and (getConnection<>nil);
+  {$else}
+  result:=false;
+  {$endif}
 end;
 
 procedure TProcessHandler.setIs64bit(state: boolean);
 begin
   fis64bit:=state;
   if state then
-    fpointersize:=8
+  begin
+    fpointersize:=8;
+  end
   else
+  begin
     fpointersize:=4;
-
-  fhexdigitpreference:=fpointersize*2;
+  end;
 end;
 
 procedure TProcessHandler.setProcessHandle(processhandle: THandle);
 var
+  {$ifdef windows}
   c: TCEConnection;
+  {$endif}
   arch: integer;
-  abi: integer;
 begin
-  //outputdebugstring('TProcessHandler.setProcessHandle');
   if (fprocesshandle<>0) and (fprocesshandle<>getcurrentprocess) and (processhandle<>getcurrentprocess) then
   begin
     try
@@ -106,12 +103,11 @@ begin
   end;
 
   fprocesshandle:=processhandle;
-
+  {$ifdef windows}
   c:=getConnection;
   if c<>nil then
   begin
-    fIsAndroid:=c.isAndroid;
-    arch:=c.getArchitecture(fprocesshandle);
+    arch:=c.getArchitecture;
     case arch of
       0:   //i386
       begin
@@ -131,63 +127,29 @@ begin
         setIs64Bit(false);
       end;
 
-      3: //arm64
+      3: //arm64 (untested, not seen yet)
       begin
         fSystemArchitecture:=archArm;
         setIs64Bit(true);
       end;
     end;
 
-    abi:=c.GetABI;
-    case abi of
-      0: fOSABI:=abiWindows;
-      1: fOSABI:=abiSystemV;
-    end;
-
   end
   else
+  {$endif}
   begin
-    fIsAndroid:=false;
-    //outputdebugstring('setProcessHandle not windows');
-
-    {$ifdef darwin}
-    outputdebugstring('setProcessHandle');
-    if MacIsArm64 then  //rosetta2 or I finally ported it to full armv8
-    begin
-      if isProcessTranslated(processid) then
-      begin
-        outputdebugstring('rosetta. So x86');
-        fSystemArchitecture:=archX86;
-        globals.SystemSupportsWritableExecutableMemory:=true;
-      end
-      else
-      begin
-        outputdebugstring('not rosetta. So pure ARM');
-        fSystemArchitecture:=archArm;
-        globals.SystemSupportsWritableExecutableMemory:=false;
-      end;
-    end;
-    {$else}
     fSystemArchitecture:=archX86;
-    {$endif}
-    {$ifdef windows}
-    fOSABI:=abiWindows;
-    {$else}
-    fOSABI:=abiSystemV;
-    {$endif}
 
     setIs64Bit(newkernelhandler.Is64BitProcess(fProcessHandle));
   end;
 
   {$ifdef ARMTEST}
   fSystemArchitecture:=archArm;
-  fOSABI:=abiSystemV;
   setIs64Bit(false);
   {$endif}
 
   if processhandle<>0 then
   begin
-    outputdebugstring('calling open');
     open;
   end;
 
@@ -196,7 +158,6 @@ end;
 procedure TProcessHandler.Open;
 var mn: string;
 begin
- // outputdebugstring('TProcessHandler.Open');
   //GetFirstModuleNa
   {$ifndef jni}
 

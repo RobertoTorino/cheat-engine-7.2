@@ -10,11 +10,10 @@ and results
 interface
 
 uses
-  {$ifdef darwin}macport,{$endif}
   Classes, Controls, SysUtils, ceguicomponents, forms, lua, lualib, lauxlib,
   comctrls, StdCtrls, CEFuncProc, typinfo, Graphics, disassembler, LuaDisassembler,
   LastDisassembleData, Assemblerunit, commonTypeDefs, ExtCtrls, addresslist,
-  MemoryRecordUnit, math, diagramblock, laz.VirtualTrees;
+  MemoryRecordUnit, math, diagramblock;
 
 type
   TLuaCaller=class
@@ -30,8 +29,6 @@ type
       synchronizeparam: integer;
       synchronizeparamcount: integer;
       syncvm: Plua_State;
-
-      selfdestructing: boolean;
       procedure NotifyEvent(sender: TObject);
       procedure SelectionChangeEvent(Sender: TObject; User: boolean);
       procedure MouseEvent(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
@@ -59,8 +56,6 @@ type
       procedure CloseEvent(Sender: TObject; var CloseAction: TCloseAction);
       procedure CloseQueryEvent(Sender: TObject; var CanClose: boolean);
       function MemoryRecordActivateEvent(sender: TObject; before, currentstate: boolean): boolean;
-      procedure MemoryRecordChangedValueEvent(sender: TObject; oldvalue, newvalue: string);
-
       procedure DisassemblerSelectionChangeEvent(sender: TObject; address, address2: ptruint);
       function DisassemblerExtraLineRender(sender: TObject; Address: ptruint; AboveInstruction: boolean; selected: boolean; var x: integer; var y: integer): TRasterImage;
 
@@ -83,9 +78,6 @@ type
       function StructureListCallback(callbackid: integer; list: tstringlist; max: integer=-1):boolean;
       function ElementListCallback(moduleid: integer; typeid: integer; list: TStringlist): boolean;
 
-      function SpeedHackSetSpeedEvent(speed: single; out r: boolean; out error: string): boolean;
-      function SpeedHackOnActivate(out r: boolean; out error: string): boolean;
-
       procedure AssemblerEvent(address:qword; instruction: string; var bytes: TAssemblerBytes);
       procedure AutoAssemblerPrologueEvent(code: TStrings; syntaxcheckonly: boolean);
       procedure AutoAssemblerTemplateCallback(script: TStrings; sender: TObject);
@@ -105,16 +97,8 @@ type
       procedure TabGetImageEvent(Sender: TObject; TabIndex: Integer; var ImageIndex: Integer);
       procedure MeasureItemEvent(Control: TWinControl; Index: Integer; var AHeight: Integer);
       procedure DisassemblerViewOverrideCallback(address: ptruint; var addressstring: string; var bytestring: string; var opcodestring: string; var parameterstring: string; var specialstring: string);
-      function HelpEvent(Command: Word; Data: PtrInt; var CallHelp: Boolean): Boolean;
-      procedure VSTGetTextEvent(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
-      procedure VTFreeNodeEvent(Sender: TBaseVirtualTree; Node: PVirtualNode);
-      procedure VTInitNodeEvent(Sender: TBaseVirtualTree; ParentNode, Node: PVirtualNode; var InitialStates: TVirtualNodeInitStates);
-      procedure VTChangingEvent(Sender: TBaseVirtualTree; Node: PVirtualNode; var Allowed: Boolean);
-      procedure VTPaintText(Sender: TBaseVirtualTree; const TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;  TextType: TVSTTextType);
-      procedure VTDrawTextEvent(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode;  Column: TColumnIndex; const CellText: String; const CellRect: TRect; var DefaultDraw: Boolean);
 
       procedure synchronize;
-      procedure queue;
 
       procedure pushFunction(L: PLua_state=nil);
 
@@ -166,8 +150,8 @@ implementation
 
 uses
   luahandler, LuaByteTable, MainUnit, disassemblerviewunit,
-  hexviewunit, d3dhookUnit, LuaClass, debuggertypedefinitions, memscan,
-  symbolhandler, symbolhandlerstructs, menus, BreakpointTypeDef, StringHashList;
+  hexviewunit, d3dhookUnit, luaclass, debuggertypedefinitions, memscan,
+  symbolhandler, symbolhandlerstructs, menus, BreakpointTypeDef;
 
 resourcestring
   rsThisTypeOfMethod = 'This type of method:';
@@ -181,9 +165,7 @@ type
     SetMethodProp: pointer; //used when we want to set a method property to a lua function (SetMethodProp)
     luafunctionheader: string;
   end;
-
-var
-  LuaCallHashList: TStringHashList;
+var LuaCallList: Tstringlist;
 
 
 function luacaller_getFunctionHeaderAndMethodForType(typeinfo: PTypeInfo; lc: pointer; name: string; header: tstrings) : Tmethod;
@@ -194,15 +176,20 @@ begin
   result.Code:=nil;
   result.data:=nil;
 
-  lcd:=LuaCallHashList.Data[typeinfo.name];
-  if lcd<>nil then
+
+  i:=LuaCallList.IndexOf(typeinfo.Name);
+  if i<>-1 then
   begin
+    lcd:=TLuaCallData(LuaCallList.Objects[i]);
     result.Code:=lcd.SetMethodProp;
     result.data:=lc;
 
     if header<>nil then
       header.Text:=format(lcd.luafunctionheader, [name]);
   end;
+
+
+
 end;
 
 procedure LuaCaller_setMethodProperty(L: PLua_state; var m: TMethod; typename: string; luafunctiononstack: integer);
@@ -211,7 +198,6 @@ var
   i,r: integer;
 
   newcode: pointer;
-  lcd: TLuaCallData;
 begin
 
   if lua_isnil(L, luafunctiononstack) then //nil, special case, always succeed
@@ -222,11 +208,11 @@ begin
     exit;
   end;
 
-  lcd:=LuaCallHashList.Data[typename];
-  if lcd=nil then
+  i:=LuaCallList.IndexOf(typename);
+  if i=-1 then
     raise exception.create(rsThisTypeOfMethod+typename+rsIsNotYetSupported);
 
-  newcode:=lcd.SetMethodProp;
+  newcode:=TLuaCallData(LuaCallList.Objects[i]).SetMethodProp;
 
   //proper type, let's clean it up
   CleanupLuaCall(m);
@@ -269,13 +255,12 @@ procedure luaCaller_pushMethodProperty(L: PLua_state; m: TMethod; typename: stri
 var
   f: lua_CFunction;
   i: integer;
-  lcd: TLuaCallData;
 begin
-  lcd:=LuaCallHashList.Data[typename];
-  if lcd=nil then
+  i:=LuaCallList.IndexOf(typename);
+  if i=-1 then
     raise exception.create(rsThisTypeOfMethod+typename+rsIsNotYetSupported);
 
-  f:=lcd.GetMethodProp;
+  f:=TLuaCallData(LuaCallList.Objects[i]).GetMethodProp;
 
 
   if m.data=nil then
@@ -285,7 +270,7 @@ begin
   end;
 
   if tobject(m.Data) is TLuaCaller then
-    TLuaCaller(m.data).pushFunction(L)
+    TLuaCaller(m.data).pushFunction
   else
   begin
     //not a lua function
@@ -360,8 +345,6 @@ var
   paramcount: integer;
   i: integer;
 begin
-  selfdestructing:=true;
-
   //no locking here (should already be obtained by the caller)
   PushFunction(syncvm);
   if synchronizeparam>0 then
@@ -381,21 +364,6 @@ begin
   end;
 
   lua_pcall(syncvm, paramcount,1,0);
-
-  free;
-end;
-
-procedure TLuaCaller.queue;
-var oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    selfdestructing:=true;
-    PushFunction(Luavm);
-    lua_pcall(Luavm, 0,0,0);
-  finally
-    lua_settop(Luavm, oldstack);
-  end;
 
   free;
 end;
@@ -498,29 +466,6 @@ begin
         if lua_gettop(L)>0 then
           canclose:=lua_toboolean(L,-1);
       end;
-    end;
-  finally
-    lua_settop(L, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.MemoryRecordChangedValueEvent(sender: TObject; oldvalue, newvalue: string);
-var
-  oldstack: integer;
-  l: Plua_State;
-begin
-  l:=GetLuaState;
-  oldstack:=lua_gettop(L);
-
-  try
-    if canRun then
-    begin
-      PushFunction;
-      luaclass_newClass(L, sender);
-      lua_pushstring(L, oldvalue);
-      lua_pushstring(L, newvalue);
-
-      lua_pcall(L, 3,1,0); //procedure(sender, oldvalue, newvalue)
     end;
   finally
     lua_settop(L, oldstack);
@@ -1241,18 +1186,15 @@ begin
   oldstack:=lua_gettop(Luavm);
 
   try
-    try
-      if canRun then
-      begin
-        PushFunction;
-        luaclass_newClass(luavm, form);
-        lua_pcall(Luavm, 1,0,0)
-      end;
-    finally
-      lua_settop(Luavm, oldstack);
+
+    if canRun then
+    begin
+      PushFunction;
+      luaclass_newClass(luavm, form);
+      lua_pcall(Luavm, 1,0,0)
     end;
-  except
-    //exceptions suck here
+  finally
+    lua_settop(Luavm, oldstack);
   end;
 end;
 
@@ -1369,10 +1311,7 @@ function TLuaCaller.SymbolLookupCallback(s: string): ptruint;
 var oldstack: integer;
 begin
   result:=0;
-  if Luavm=nil then exit;
   oldstack:=lua_gettop(Luavm);
-
- // outputdebugstring('TLuaCaller.SymbolLookupCallback. oldstack='+oldstack.ToString);
   try
     PushFunction;
     lua_pushstring(luavm, s);
@@ -1537,53 +1476,6 @@ begin
       end;
 
       result:=true;
-    end;
-  finally
-    lua_settop(Luavm, oldstack);
-  end;
-end;
-
-function TLuaCaller.SpeedHackSetSpeedEvent(speed: single; out r: boolean; out error: string): boolean;
-var oldstack: integer;
-begin
-  result:=false;
-  if Luavm=nil then exit;
-  oldstack:=lua_gettop(Luavm);
-  try
-    PushFunction;
-    lua_pushnumber(Luavm, speed);
-    if lua_pcall(Luavm, 1,3,0)=0 then
-    begin
-      result:=lua_toboolean(luavm,-3);
-      if result then
-      begin
-        r:=lua_toboolean(Luavm,-2);
-        if r=false then
-          error:=Lua_ToString(Luavm,-1);
-      end;
-    end;
-  finally
-    lua_settop(Luavm, oldstack);
-  end;
-end;
-
-function TLuaCaller.SpeedHackOnActivate(out r: boolean; out error: string): boolean;
-var oldstack: integer;
-begin
-  result:=false;
-  if Luavm=nil then exit;
-  oldstack:=lua_gettop(Luavm);
-  try
-    PushFunction;
-    if lua_pcall(Luavm, 0,3,0)=0 then
-    begin
-      result:=lua_toboolean(luavm,-3);
-      if result then
-      begin
-        r:=lua_toboolean(Luavm,-2);
-        if r=false then
-          error:=Lua_ToString(Luavm,-1);
-      end;
     end;
   finally
     lua_settop(Luavm, oldstack);
@@ -1824,144 +1716,6 @@ begin
   end;
 end;
 
-function TLuaCaller.HelpEvent(Command: Word; Data: PtrInt; var CallHelp: Boolean): Boolean;
-var
-  oldstack: integer;
-begin
-  result:=false;
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    lua_pushinteger(LuaVM, Command);
-    lua_pushinteger(LuaVM, Data);
-    lua_pushboolean(LuaVM, CallHelp);
-    lua_pcall(LuaVM, 3,2,0);
-
-    if not lua_isnil(LuaVM,-2) then result:=lua_toboolean(LuaVM,-2);
-    if not lua_isnil(LuaVM,-1) then CallHelp:=lua_toboolean(LuaVM,-1);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VSTGetTextEvent(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: String);
-var
-  oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);     //function(sender, nodeindex, columnindex, node, texttype)
-    if node<>nil then
-      lua_pushinteger(LuaVM, node^.Index)
-    else
-      lua_pushinteger(LuaVM, lua_Integer(-1));
-
-    lua_pushinteger(LuaVM, column);
-    lua_pushlightuserdata(LuaVM, Node);
-    lua_pushinteger(LuaVM, ord(TextType));
-    lua_pcall(LuaVM, 5,1,0);
-
-    CellText:=Lua_ToString(LuaVM,-1);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VTFreeNodeEvent(Sender: TBaseVirtualTree; Node: PVirtualNode);
-var
-  oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);
-    lua_pushlightuserdata(LuaVM, node);
-    lua_pcall(LuaVM, 2,0,0);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VTInitNodeEvent(Sender: TBaseVirtualTree; ParentNode, Node: PVirtualNode; var InitialStates: TVirtualNodeInitStates);
-var
-  oldstack: integer;
-begin
-  //function (sender, parentnode, node, initialStates) return initialStates end
-
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);
-    lua_pushlightuserdata(LuaVM, Parentnode);
-    lua_pushlightuserdata(LuaVM, Node);
-    lua_pushstring(LuaVM, SetToString(ptypeinfo(typeinfo(TVirtualNodeInitStates)), @initialStates));
-    lua_pcall(LuaVM, 4,1,0);
-
-    StringToSet(ptypeinfo(typeinfo(TVirtualNodeInitStates)), Lua_ToString(LuaVM,-1), @InitialStates);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VTChangingEvent(Sender: TBaseVirtualTree; Node: PVirtualNode; var Allowed: Boolean);
-var
-  oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);
-    lua_pushlightuserdata(LuaVM, Node);
-    lua_pcall(LuaVM, 2,1,0);
-    allowed:=lua_toboolean(LuaVM,-1);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VTPaintText(Sender: TBaseVirtualTree; const TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;  TextType: TVSTTextType);
-//lua: function (sender, canvas, node, column, texttype)
-//pascal: procedure (Sender: TBaseVirtualTree; const TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;  TextType: TVSTTextType)
-var
-  oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);
-    luaclass_newClass(LuaVM, TargetCanvas);
-    lua_pushlightuserdata(LuaVM, Node);
-    lua_pushinteger(LuaVM, column);
-    lua_pushinteger(LuaVM, ord(TextType));
-
-    lua_pcall(LuaVM, 5,0,0);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
-
-procedure TLuaCaller.VTDrawTextEvent(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode;  Column: TColumnIndex; const CellText: String; const CellRect: TRect; var DefaultDraw: Boolean);
-//lua: function %s(sender, canvas, node, column, celltext, cellrect): defaultdraw
-//pascal: procedure(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode;  Column: TColumnIndex; const CellText: String; const CellRect: TRect; var DefaultDraw: Boolean)
-var
-  oldstack: integer;
-begin
-  oldstack:=lua_gettop(Luavm);
-  try
-    pushFunction;
-    luaclass_newClass(LuaVM, sender);
-    luaclass_newClass(LuaVM, TargetCanvas);
-    lua_pushlightuserdata(LuaVM, Node);
-    lua_pushinteger(LuaVM, column);
-    lua_pushstring(LuaVM, celltext);
-    lua_pushrect(Luavm, CellRect);
-    lua_pcall(LuaVM, 6,1,0);
-    defaultdraw:=lua_toboolean(LuaVM,-1);
-  finally
-    lua_settop(LuaVM, oldstack);
-  end;
-end;
 
 //----------------------------Lua implementation-----------------------------
 function LuaCaller_NotifyEvent(L: PLua_state): integer; cdecl;
@@ -2630,31 +2384,6 @@ begin
     lua_pop(L, lua_gettop(L));
 end;
 
-function LuaCaller_MemoryRecordChangedValueEvent(L: PLua_state): integer; cdecl;
-var
-  m: TMethod;
-  sender: TObject;
-  oldvalue, newvalue: string;
-  r: boolean;
-begin
-  result:=0;
-  if lua_gettop(L)=3 then
-  begin
-    //(sender: TObject; before, currentstate: boolean):
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_toceuserdata(L, 1);
-    oldvalue:=Lua_ToString(L, 2);
-    newvalue:=Lua_ToString(L, 3);
-    lua_pop(L, lua_gettop(L));
-
-    TMemoryRecordChangedValueEvent(m)(sender,oldvalue, newvalue);
-    result:=0;
-  end
-  else
-    lua_pop(L, lua_gettop(L));
-end;
-
 function LuaCaller_MemoryRecordActivateEvent(L: PLua_state): integer; cdecl;
 var
   m: TMethod;
@@ -3292,188 +3021,6 @@ begin
     lua_pop(L, lua_gettop(L));
 end;
 
-
-function LuaCaller_HelpEvent(L: PLua_state): integer; cdecl; // function(Command: Word; Data: PtrInt; var CallHelp: Boolean): Boolean of object;  <>  function(Command, Data, CallHelp): result, newCallHelp
-var command: word;
-  data: ptrint;
-  CallHelp: Boolean;
-
-  m: TMethod;
-  r: boolean;
-begin
-  result:=0;
-  if lua_gettop(L)=3 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    command:=lua_tointeger(L,1);
-    data:=lua_tointeger(L,2);
-    CallHelp:=lua_toboolean(L,3);
-
-    r:=THelpEvent(m)(command, data, callhelp);
-    lua_pushboolean(L,r);
-    lua_pushboolean(L,callhelp);
-    result:=2;
-  end;
-end;
-
-
-function LuaCaller_VSTGetTextEvent(L: PLua_state): integer; cdecl; //procedure(Sender: TBaseVirtualTree; Node: PVirtualNode; Column: TColumnIndex; TextType: TVSTTextType; var CellText: String)
-var
-  sender: TBaseVirtualTree;
-  columnindex: integer;
-  node: PVirtualNode;
-  text: string;
-  texttype: TVSTTextType;
-  m: TMethod;
-begin
-  result:=0;
-  if lua_gettop(L)=5 then
-  begin
-    //passed as: function(sender, nodeindex, columnindex, node, texttype): string
-    //nodeindex is ignored (can be obtasisned from node)
-
-
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    columnindex:=lua_tointeger(L,3);
-    node:=lua_toPointer(L,4);
-    texttype:=TVSTTextType(lua_tointeger(L,5));
-
-
-    TVSTGetTextEvent(m)(sender, node, columnindex, texttype, text);
-    lua_pushstring(L,text);
-    result:=1;
-  end;
-end;
-
-function LuaCaller_VTFreeNodeEvent(L: PLua_state): integer; cdecl; //procedure(tv,node)
-var
-  sender: TBaseVirtualTree;
-  node: PVirtualNode;
-  m: TMethod;
-begin
-  result:=0;
-  if lua_gettop(L)=2 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    node:=lua_topointer(L,2);
-    TVTFreeNodeEvent(m)(sender, node);
-  end;
-end;
-
-function LuaCaller_VTInitNodeEvent(L: PLua_state): integer; cdecl;   //(sender, parentnode, node, initialStates): initialStates
-var
-  sender: TBaseVirtualTree;
-  parentnode: PVirtualNode;
-  node: PVirtualNode;
-  InitialStates: TVirtualNodeInitStates;
-  m: TMethod;
-begin
-  result:=0;
-  if lua_gettop(L)=4 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    parentnode:=lua_topointer(L,2);
-    node:=lua_topointer(L,3);
-    StringToSet(ptypeinfo(typeinfo(TVirtualNodeInitStates)), Lua_ToString(L,4), @InitialStates);
-
-    TVTInitNodeEvent(m)(sender, parentnode, node, InitialStates);
-
-    lua_pushstring(L,SetToString(ptypeinfo(typeinfo(TVirtualNodeInitStates)), pointer(@InitialStates)));
-    result:=1;
-  end;
-end;
-
-function LuaCaller_VTChangingEvent(L: PLua_state): integer; cdecl;
-var
-  sender: TBaseVirtualTree;
-  node: PVirtualNode;
-  allow: boolean;
-  m: TMethod;
-begin
-  result:=0;
-  if lua_gettop(L)>=2 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    node:=lua_topointer(L,2);
-
-    allow:=false;
-    TVTChangingEvent(m)(sender, node, allow);
-
-    lua_pushboolean(L, allow);
-
-
-    result:=1;
-  end;
-end;
-
-function LuaCaller_VTPaintText(L: PLua_state): integer; cdecl;
-//lua: function (sender, canvas, node, column, texttype)
-//pascal: procedure (Sender: TBaseVirtualTree; const TargetCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;  TextType: TVSTTextType)
-var
-  sender: TBaseVirtualTree;
-  canvas: TCanvas;
-  node: PVirtualNode;
-  column: TColumnIndex;
-  TextType: TVSTTextType;
-  m: tmethod;
-begin
-  result:=0;
-  if lua_gettop(L)>=5 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    canvas:=lua_ToCEUserData(L,2);
-    node:=lua_topointer(L,3);
-    column:=lua_tointeger(L,4);
-    texttype:=TVSTTextType(lua_tointeger(L,5));
-
-    TVTPaintText(m)(sender, canvas, node, column, texttype);
-  end;
-end;
-
-function LuaCaller_VTDrawTextEvent(L: PLua_state): integer; cdecl;
-//lua: function %s(sender, canvas, node, column, celltext, cellrect): defaultdraw
-//pascal: procedure(Sender: TBaseVirtualTree; TargetCanvas: TCanvas; Node: PVirtualNode;  Column: TColumnIndex; const CellText: String; const CellRect: TRect; var DefaultDraw: Boolean)
-var
-  sender: TBaseVirtualTree;
-  canvas: TCanvas;
-  node: PVirtualNode;
-  Column: TColumnIndex;
-  CellText: String;
-  CellRect: Trect;
-  defaultdraw: boolean=true;
-
-  m: tmethod;
-begin
-  result:=0;
-  if lua_gettop(L)>=6 then
-  begin
-    m.code:=lua_touserdata(L, lua_upvalueindex(1));
-    m.data:=lua_touserdata(L, lua_upvalueindex(2));
-    sender:=lua_ToCEUserData(L,1);
-    canvas:=lua_ToCEUserData(L,2);
-    node:=lua_topointer(L,3);
-    column:=lua_tointeger(L,4);
-    celltext:=Lua_ToString(L,5);
-    cellrect:=lua_toRect(L,6);
-
-    TVTDrawTextEvent(m)(sender, canvas, node, column, celltext, cellrect, defaultdraw);
-
-    lua_pushboolean(L, defaultdraw);
-    result:=1;
-  end;
-end;
-
 procedure registerLuaCall(typename: string; getmethodprop: lua_CFunction; setmethodprop: pointer; luafunctionheader: string);
 var t: TLuaCallData;
 begin
@@ -3481,91 +3028,75 @@ begin
   t.getmethodprop:=getmethodprop;
   t.setmethodprop:=setmethodprop;
   t.luafunctionheader:=luafunctionheader;
-  LuaCallHashList.Add(typename,t);
+  LuaCallList.AddObject(typename, t);
 end;
 
-
 initialization
-  LuaCallHashList:=TStringHashList.Create(true);
-
-  registerLuaCall('TNotifyEvent',  LuaCaller_NotifyEvent, pointer(@TLuaCaller.NotifyEvent),'function %s(sender)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TSelectionChangeEvent', LuaCaller_SelectionChangeEvent, pointer(@TLuaCaller.SelectionChangeEvent),'function %s(sender, user)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TCloseEvent', LuaCaller_CloseEvent, pointer(@TLuaCaller.CloseEvent),'function %s(sender)'#13#10#13#10'return caHide --Possible options: caHide, caFree, caMinimize, caNone'#13#10'end'#13#10);
-  registerLuaCall('TCloseQueryEvent', LuaCaller_CloseQueryEvent, pointer(@TLuaCaller.CloseQueryEvent),'function %s(sender)'#13#10#13#10'return true --return false if you wish to block closing this form'#13#10'end'#13#10);
-  registerLuaCall('TMouseEvent', LuaCaller_MouseEvent, pointer(@TLuaCaller.MouseEvent),'function %s(sender, button, x, y)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TMouseMoveEvent', LuaCaller_MouseMoveEvent, pointer(@TLuaCaller.MouseMoveEvent),'function %s(sender, x, y)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TMouseWheelUpDownEvent', LuaCaller_MouseWheelUpDownEvent, pointer(@TLuaCaller.MouseWheelUpDownEvent),'function %s(sender, x, y)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TKeyPressEvent', LuaCaller_KeyPressEvent, pointer(@TLuaCaller.KeyPressEvent),'function %s(sender, key)'#13#10#13#10'  return key'#13#10'end'#13#10);
-  registerLuaCall('TKeyEvent', LuaCaller_KeyEvent, pointer(@TLuaCaller.KeyEvent),'function %s(sender, key)'#13#10#13#10'  return key'#13#10'end'#13#10);
-  registerLuaCall('TTVExpandingEvent', LuaCaller_TreeViewExpandOrCloseEvent, pointer(@TLuaCaller.TreeViewExpandOrCloseEvent),'function %s(sender, node)'#13#10'  local allow=true'#13#10#13#10'  return allow'#13#10'end'#13#10);
-  registerLuaCall('TTVCollapsingEvent', LuaCaller_TreeViewExpandOrCloseEvent, pointer(@TLuaCaller.TreeViewExpandOrCloseEvent),'function %s(sender, node)'#13#10'  local allow=true'#13#10#13#10'  return allow'#13#10'end'#13#10);
-  registerLuaCall('TLVCheckedItemEvent', LuaCaller_LVCheckedItemEvent, pointer(@TLuaCaller.LVCheckedItemEvent),'function %s(sender, listitem)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TLVDeletedEvent', LuaCaller_LVCheckedItemEvent, pointer(@TLuaCaller.LVCheckedItemEvent),'function %s(sender, listitem)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TLVColumnClickEvent', LuaCaller_LVColumnClickEvent, pointer(@TLuaCaller.LVColumnClickEvent),'function %s(sender, listcolumn)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TLVCompareEvent', LuaCaller_LVCompareEvent, pointer(@TLuaCaller.LVCompareEvent),'function %s(sender, listitem1, listitem2, data)'#13#10#13#10'  return 0 --0=equal -1=smaller 1=bigger'#13#10'end'#13#10);
-  registerLuaCall('TCanResizeEvent', LuaCaller_CanResizeEvent, pointer(@TLuaCaller.CanResizeEvent),'function %s(sender, newsize)'#13#10#13#10' local accept=true'#13#10'return newsize, accept'#13#10'end'#13#10);
-  registerLuaCall('TLVSelectItemEvent', LuaCaller_LVSelectItemEvent, pointer(@TLuaCaller.LVSelectItemEvent),'function %s(sender, listitem, selected)'#13#10#13#10'end'#13#10);
+  LuaCallList:=TStringList.create;
+  registerLuaCall('TNotifyEvent',  LuaCaller_NotifyEvent, pointer(TLuaCaller.NotifyEvent),'function %s(sender)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TSelectionChangeEvent', LuaCaller_SelectionChangeEvent, pointer(TLuaCaller.SelectionChangeEvent),'function %s(sender, user)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TCloseEvent', LuaCaller_CloseEvent, pointer(TLuaCaller.CloseEvent),'function %s(sender)'#13#10#13#10'return caHide --Possible options: caHide, caFree, caMinimize, caNone'#13#10'end'#13#10);
+  registerLuaCall('TCloseQueryEvent', LuaCaller_CloseQueryEvent, pointer(TLuaCaller.CloseQueryEvent),'function %s(sender)'#13#10#13#10'return true --return false if you wish to block closing this form'#13#10'end'#13#10);
+  registerLuaCall('TMouseEvent', LuaCaller_MouseEvent, pointer(TLuaCaller.MouseEvent),'function %s(sender, button, x, y)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TMouseMoveEvent', LuaCaller_MouseMoveEvent, pointer(TLuaCaller.MouseMoveEvent),'function %s(sender, x, y)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TMouseWheelUpDownEvent', LuaCaller_MouseWheelUpDownEvent, pointer(TLuaCaller.MouseWheelUpDownEvent),'function %s(sender, x, y)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TKeyPressEvent', LuaCaller_KeyPressEvent, pointer(TLuaCaller.KeyPressEvent),'function %s(sender, key)'#13#10#13#10'  return key'#13#10'end'#13#10);
+  registerLuaCall('TKeyEvent', LuaCaller_KeyEvent, pointer(TLuaCaller.KeyEvent),'function %s(sender, key)'#13#10#13#10'  return key'#13#10'end'#13#10);
+  registerLuaCall('TTVExpandingEvent', LuaCaller_TreeViewExpandOrCloseEvent, pointer(TLuaCaller.TreeViewExpandOrCloseEvent),'function %s(sender, node)'#13#10'  local allow=true'#13#10#13#10'  return allow'#13#10'end'#13#10);
+  registerLuaCall('TTVCollapsingEvent', LuaCaller_TreeViewExpandOrCloseEvent, pointer(TLuaCaller.TreeViewExpandOrCloseEvent),'function %s(sender, node)'#13#10'  local allow=true'#13#10#13#10'  return allow'#13#10'end'#13#10);
+  registerLuaCall('TLVCheckedItemEvent', LuaCaller_LVCheckedItemEvent, pointer(TLuaCaller.LVCheckedItemEvent),'function %s(sender, listitem)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TLVDeletedEvent', LuaCaller_LVCheckedItemEvent, pointer(TLuaCaller.LVCheckedItemEvent),'function %s(sender, listitem)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TLVColumnClickEvent', LuaCaller_LVColumnClickEvent, pointer(TLuaCaller.LVColumnClickEvent),'function %s(sender, listcolumn)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TLVCompareEvent', LuaCaller_LVCompareEvent, pointer(TLuaCaller.LVCompareEvent),'function %s(sender, listitem1, listitem2, data)'#13#10#13#10'  return 0 --0=equal -1=smaller 1=bigger'#13#10'end'#13#10);
+  registerLuaCall('TCanResizeEvent', LuaCaller_CanResizeEvent, pointer(TLuaCaller.CanResizeEvent),'function %s(sender, newsize)'#13#10#13#10' local accept=true'#13#10'return newsize, accept'#13#10'end'#13#10);
+  registerLuaCall('TLVSelectItemEvent', LuaCaller_LVSelectItemEvent, pointer(TLuaCaller.LVSelectItemEvent),'function %s(sender, listitem, selected)'#13#10#13#10'end'#13#10);
 
   //(Sender: TCustomListView; const ARect: TRect;  var DefaultDraw: Boolean
-  registerLuaCall('TLVCustomDrawEvent', LuaCaller_LVCustomDrawEvent, pointer(@TLuaCaller.LVCustomDrawEvent),'function %s(Sender, Rect)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVCustomDrawEvent', LuaCaller_LVCustomDrawEvent, pointer(TLuaCaller.LVCustomDrawEvent),'function %s(Sender, Rect)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
 
   //(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; var DefaultDraw: Boolean) of object;
-  registerLuaCall('TLVCustomDrawItemEvent', LuaCaller_LVCustomDrawItemEvent, pointer(@TLuaCaller.LVCustomDrawItemEvent),'function %s(Sender, Item, State)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVCustomDrawItemEvent', LuaCaller_LVCustomDrawItemEvent, pointer(TLuaCaller.LVCustomDrawItemEvent),'function %s(Sender, Item, State)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
 
   //(Sender: TCustomListView; Item: TListItem; SubItem: Integer; State: TCustomDrawState; var DefaultDraw: Boolean) of object;
-  registerLuaCall('TLVCustomDrawSubItemEvent', LuaCaller_LVCustomDrawSubItemEvent, pointer(@TLuaCaller.LVCustomDrawSubItemEvent),'function %s(Sender, Item, SubItem, State)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVCustomDrawSubItemEvent', LuaCaller_LVCustomDrawSubItemEvent, pointer(TLuaCaller.LVCustomDrawSubItemEvent),'function %s(Sender, Item, SubItem, State)'#13#10#13#10'  return true --return true for DefaultDraw'#13#10'end'#13#10);
 
 
   //TLVAdvancedCustomDrawEvent = procedure(Sender: TCustomListView; const ARect: TRect; Stage: TCustomDrawStage; var DefaultDraw: Boolean) of object;
-  registerLuaCall('TLVAdvancedCustomDrawEvent', LuaCaller_LVAdvancedCustomDrawEvent, pointer(@TLuaCaller.LVAdvancedCustomDrawEvent),'function %s(Sender, Rect, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVAdvancedCustomDrawEvent', LuaCaller_LVAdvancedCustomDrawEvent, pointer(TLuaCaller.LVAdvancedCustomDrawEvent),'function %s(Sender, Rect, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
   //TLVAdvancedCustomDrawItemEvent = procedure(Sender: TCustomListView; Item: TListItem; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean) of object;
-  registerLuaCall('TLVAdvancedCustomDrawItemEvent', LuaCaller_LVAdvancedCustomDrawItemEvent, pointer(@TLuaCaller.LVAdvancedCustomDrawItemEvent),'function %s(Sender, Item, State, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVAdvancedCustomDrawItemEvent', LuaCaller_LVAdvancedCustomDrawItemEvent, pointer(TLuaCaller.LVAdvancedCustomDrawItemEvent),'function %s(Sender, Item, State, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
   //TLVAdvancedCustomDrawSubItemEvent=procedure(Sender: TCustomListView; Item: TListItem; SubItem: Integer; State: TCustomDrawState; Stage: TCustomDrawStage; var DefaultDraw: Boolean) of object;
-  registerLuaCall('TLVAdvancedCustomDrawSubItemEvent', LuaCaller_LVAdvancedCustomDrawSubItemEvent, pointer(@TLuaCaller.LVAdvancedCustomDrawSubItemEvent),'function %s(Sender, Item, SubItemIndex, State, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
+  registerLuaCall('TLVAdvancedCustomDrawSubItemEvent', LuaCaller_LVAdvancedCustomDrawSubItemEvent, pointer(TLuaCaller.LVAdvancedCustomDrawSubItemEvent),'function %s(Sender, Item, SubItemIndex, State, Stage)'#13#10#13#10'  return true --returen true for DefaultDraw'#13#10'end'#13#10);
 
 
 
-  registerLuaCall('TMemoryRecordActivateEvent',     LuaCaller_MemoryRecordActivateEvent,     pointer(@TLuaCaller.MemoryRecordActivateEvent),'function %s(sender, before, current)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TMemoryRecordChangedValueEvent', LuaCaller_MemoryRecordChangedValueEvent, pointer(@TLuaCaller.MemoryRecordChangedValueEvent),'function %s(sender, oldvalue, newvalue)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TMemoryRecordActivateEvent', LuaCaller_MemoryRecordActivateEvent, pointer(TLuaCaller.MemoryRecordActivateEvent),'function %s(sender, before, current)'#13#10#13#10'end'#13#10);
 
+  registerLuaCall('TDisassemblerSelectionChangeEvent', LuaCaller_DisassemblerSelectionChangeEvent, pointer(TLuaCaller.DisassemblerSelectionChangeEvent),'function %s(sender, address, address2)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TDisassemblerExtraLineRender', LuaCaller_DisassemblerExtraLineRender, pointer(TLuaCaller.DisassemblerExtraLineRender),'function %s(sender, Address, AboveInstruction, Selected)'#13#10#13#10'return nil,0,0'#13#10#13#10'end'#13#10);
+  registerLuaCall('TByteSelectEvent', LuaCaller_ByteSelectEvent, pointer(TLuaCaller.ByteSelectEvent),'function %s(sender, address, address2)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TAddressChangeEvent', LuaCaller_AddressChangeEvent, pointer(TLuaCaller.AddressChangeEvent),'function %s(sender, address)'#13#10#13#10'end'#13#10);
 
+  registerLuaCall('TD3DClickEvent', LuaCaller_D3DClickEvent, pointer(TLuaCaller.D3DClickEvent),'function %s(renderobject, x, y)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TD3DKeyDownEvent', LuaCaller_D3DKeyDownEvent, pointer(TLuaCaller.D3DKeyDownEvent),'function %s(virtualkeycode, char)'#13#10#13#10'  return false'#13#10'end'#13#10);
 
-  registerLuaCall('TDisassemblerSelectionChangeEvent', LuaCaller_DisassemblerSelectionChangeEvent, pointer(@TLuaCaller.DisassemblerSelectionChangeEvent),'function %s(sender, address, address2)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TDisassemblerExtraLineRender', LuaCaller_DisassemblerExtraLineRender, pointer(@TLuaCaller.DisassemblerExtraLineRender),'function %s(sender, Address, AboveInstruction, Selected)'#13#10#13#10'return nil,0,0'#13#10#13#10'end'#13#10);
-  registerLuaCall('TByteSelectEvent', LuaCaller_ByteSelectEvent, pointer(@TLuaCaller.ByteSelectEvent),'function %s(sender, address, address2)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TAddressChangeEvent', LuaCaller_AddressChangeEvent, pointer(@TLuaCaller.AddressChangeEvent),'function %s(sender, address)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TDisassembleEvent', LuaCaller_DisassembleEvent, pointer(TLuaCaller.DisassembleEvent),'function %s(sender, address, ldd)'#13#10#13#10'  return disassembledstring, description'#13#10'end'#13#10);
+  registerLuaCall('TDropFilesEvent', LuaCaller_DropFilesEvent, pointer(TLuaCaller.DropFilesEvent),'function %s(sender, filename)'#13#10#13#10'end'#13#10);
 
-  registerLuaCall('TD3DClickEvent', LuaCaller_D3DClickEvent, pointer(@TLuaCaller.D3DClickEvent),'function %s(renderobject, x, y)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TD3DKeyDownEvent', LuaCaller_D3DKeyDownEvent, pointer(@TLuaCaller.D3DKeyDownEvent),'function %s(virtualkeycode, char)'#13#10#13#10'  return false'#13#10'end'#13#10);
+  registerLuaCall('TMemRecChangeEvent', LuaCaller_MemRecChangeEvent, pointer(TLuaCaller.MemRecChangeEvent),'function %s(al, memrec)'#13#10#13#10'  return false'#13#10'end'#13#10);
+  registerLuaCall('TGetDisplayValueEvent', LuaCaller_GetDisplayValueEvent, pointer(TLuaCaller.GetDisplayValueEvent),'function %s(memrec, value)'#13#10#13#10'  return false,value'#13#10'end'#13#10);
+  registerLuaCall('TMemScanGuiUpdateRoutine', LuaCaller_MemScanGuiUpdateRoutine, pointer(TLuaCaller.MemScanGuiUpdateRoutine),'function %s(Sender, TotalAddressesToScan, CurrentlyScanned, ResultsFound)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TProcessOpenedEvent', LuaCaller_ProcessOpenedEvent, pointer(TLuaCaller.ProcessOpenedEvent),'function %s(processid, handle, caption)'#13#10#13#10'end'#13#10);
+  registerLuaCall('THexViewTextRenderEvent', LuaCaller_HexViewTextRenderEvent, pointer(TLuaCaller.HexViewTextRenderEvent),'function %s(sender, address, text)'#13#10#13#10'  return text'#13#10'end'#13#10);
 
-  registerLuaCall('TDisassembleEvent', LuaCaller_DisassembleEvent, pointer(@TLuaCaller.DisassembleEvent),'function %s(sender, address, ldd)'#13#10#13#10'  return disassembledstring, description'#13#10'end'#13#10);
-  registerLuaCall('TDropFilesEvent', LuaCaller_DropFilesEvent, pointer(@TLuaCaller.DropFilesEvent),'function %s(sender, filename)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TDrawItemEvent', LuaCaller_DrawItemEvent, pointer(TLuaCaller.DrawItemEvent),'function %s(sender, index, rect, state)'#13#10#13#10'end'#13#10);
+  registerLuaCall('TMenuDrawItemEvent', LuaCaller_MenuDrawItemEvent, pointer(TLuaCaller.MenuDrawItemEvent),'function %s(sender, canvas, rect, state)'#13#10#13#10'end'#13#10);
 
-  registerLuaCall('TMemRecChangeEvent', LuaCaller_MemRecChangeEvent, pointer(@TLuaCaller.MemRecChangeEvent),'function %s(al, memrec)'#13#10#13#10'  return false'#13#10'end'#13#10);
-  registerLuaCall('TGetDisplayValueEvent', LuaCaller_GetDisplayValueEvent, pointer(@TLuaCaller.GetDisplayValueEvent),'function %s(memrec, value)'#13#10#13#10'  return false,value'#13#10'end'#13#10);
-  registerLuaCall('TMemScanGuiUpdateRoutine', LuaCaller_MemScanGuiUpdateRoutine, pointer(@TLuaCaller.MemScanGuiUpdateRoutine),'function %s(Sender, TotalAddressesToScan, CurrentlyScanned, ResultsFound)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TProcessOpenedEvent', LuaCaller_ProcessOpenedEvent, pointer(@TLuaCaller.ProcessOpenedEvent),'function %s(processid, handle, caption)'#13#10#13#10'end'#13#10);
-  registerLuaCall('THexViewTextRenderEvent', LuaCaller_HexViewTextRenderEvent, pointer(@TLuaCaller.HexViewTextRenderEvent),'function %s(sender, address, text)'#13#10#13#10'  return text'#13#10'end'#13#10);
+  registerLuaCall('TDBCustomDrawEvent', LuaCaller_DBCustomDrawEvent, pointer(TLuaCaller.DBCustomDrawEvent),'function %s(sender, rect, beforedraw)'#13#10#13#10'  return text'#13#10'end'#13#10);
+  registerLuaCall('TContextPopupEvent', LuaCaller_ContextPopupEvent, pointer(TLuaCaller.ContextPopupEvent),'function %s(sender, mousepos)'#13#10'  local handled=true'#13#10'  return handled'#13#10'end'#13#10);
+  registerLuaCall('TTabGetImageEvent', LuaCaller_TabGetImageEvent, pointer(TLuaCaller.TabGetImageEvent),'function %s(sender, tabindex)'#13#10'  local imageindex=-1'#13#10'  return imageindex'#13#10'end'#13#10);
+  registerLuaCall('TMeasureItemEvent', LuaCaller_MeasureItemEvent, pointer(TLuaCaller.MeasureItemEvent),'function %s(sender, index, height)'#13#10'  return height'#13#10'end'#13#10);
 
-  registerLuaCall('TDrawItemEvent', LuaCaller_DrawItemEvent, pointer(@TLuaCaller.DrawItemEvent),'function %s(sender, index, rect, state)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TMenuDrawItemEvent', LuaCaller_MenuDrawItemEvent, pointer(@TLuaCaller.MenuDrawItemEvent),'function %s(sender, canvas, rect, state)'#13#10#13#10'end'#13#10);
-
-  registerLuaCall('TDBCustomDrawEvent', LuaCaller_DBCustomDrawEvent, pointer(@TLuaCaller.DBCustomDrawEvent),'function %s(sender, rect, beforedraw)'#13#10#13#10'  return text'#13#10'end'#13#10);
-  registerLuaCall('TContextPopupEvent', LuaCaller_ContextPopupEvent, pointer(@TLuaCaller.ContextPopupEvent),'function %s(sender, mousepos)'#13#10'  local handled=true'#13#10'  return handled'#13#10'end'#13#10);
-  registerLuaCall('TTabGetImageEvent', LuaCaller_TabGetImageEvent, pointer(@TLuaCaller.TabGetImageEvent),'function %s(sender, tabindex)'#13#10'  local imageindex=-1'#13#10'  return imageindex'#13#10'end'#13#10);
-  registerLuaCall('TMeasureItemEvent', LuaCaller_MeasureItemEvent, pointer(@TLuaCaller.MeasureItemEvent),'function %s(sender, index, height)'#13#10'  return height'#13#10'end'#13#10);
-
-  registerLuaCall('TDisassemblerViewOverrideCallback', LuaCaller_DisassemblerViewOverrideCallback, pointer(@TLuaCaller.DisassemblerViewOverrideCallback),'function %s(address, addressstring, bytestring, opcodestring, parameterstring, specialstring)'#13#10'  return addressstring, bytestring, opcodestring, parameterstring, specialstring'#13#10'end'#13#10);
-
-  registerLuaCall('THelpEvent',       LuaCaller_HelpEvent,       pointer(@TLuaCaller.HelpEvent),       'function %s(command, data ,callhelp)'#13#10#13#10'  return result, callhelp'#13#10'end'#13#10);
-
-
-  registerLuaCall('TVSTGetTextEvent', LuaCaller_VSTGetTextEvent, pointer(@TLuaCaller.VSTGetTextEvent), 'function %s(sender, nodeindex, columnindex, node, texttype)   '#13#10#13#10'  return ''text'''#13#10'end'#13#10);
-  registerLuaCall('TVTFreeNodeEvent', LuaCaller_VTFreeNodeEvent, pointer(@TLuaCaller.VTFreeNodeEvent), 'function %s(sender, node)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TVTInitNodeEvent', LuaCaller_VTInitNodeEvent, pointer(@TLuaCaller.VTInitNodeEvent), 'function %s(sender, parentnode, node, initialStates)'#13#10#13#10'  return initialStates'#13#10'end'#13#10);
-  registerLuaCall('TVTChangingEvent', LuaCaller_VTChangingEvent, pointer(@TLuaCaller.VTChangingEvent), 'function %s(sender, node)'#13#10'  return allowed'#13#10'end'#13#10);
-  registerLuaCall('TVTPaintText',     LuaCaller_VTPaintText,     pointer(@TLuaCaller.VTPaintText),     'function %s(sender, canvas, node, column, texttype)'#13#10#13#10'end'#13#10);
-  registerLuaCall('TVTDrawTextEvent', LuaCaller_VTDrawTextEvent, pointer(@TLuaCaller.VTDrawTextEvent), 'function %s(sender, canvas, node, column, celltext, cellrect)'#13#10#13#10'  local DefaultDraw=true'#13#10'  return DefaultDraw'#13#10'end'#13#10);
-
+  registerLuaCall('TDisassemblerViewOverrideCallback', LuaCaller_DisassemblerViewOverrideCallback, pointer(TLuaCaller.DisassemblerViewOverrideCallback),'function %s(address, addressstring, bytestring, opcodestring, parameterstring, specialstring)'#13#10'  return addressstring, bytestring, opcodestring, parameterstring, specialstring'#13#10'end'#13#10);
 end.
 

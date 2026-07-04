@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
   ComCtrls, ExtCtrls, maps, Menus, syncobjs, newkernelhandler,
   ProcessHandlerUnit, CodeFilterCallOrAllDialog, PEInfoFunctions, PEInfounit,
-  lua, lualib, lauxlib, LuaForm, LuaClass{$ifdef darwin},macport{$endif}, betterControls;
+  lua, lualib, lauxlib, LuaForm, LuaClass{$ifdef darwin},macport{$endif};
 
 type
 
@@ -57,7 +57,6 @@ type
     procedure btnStartClick(Sender: TObject);
     procedure btnStopClick(Sender: TObject);
     procedure btnFromUnwindInfoClick(Sender: TObject);
-    procedure FormShow(Sender: TObject);
     procedure frmLaunchBranchMapperClick(Sender: TObject);
     procedure Button7Click(Sender: TObject);
     procedure FilterClick(Sender: TObject);
@@ -879,38 +878,34 @@ begin
     else
     if ext='.ceaddress' then
     begin
-      f:=tfilestream.create(opendialog.filename, fmOpenRead or fmShareDenyNone);
-      try
-        count:=f.ReadWord;
+      f:=tfilestream.create(opendialog.filename, fmOpenRead);
+      count:=f.ReadWord;
 
-        ml:=tstringlist.create;
+      ml:=tstringlist.create;
 
-        setlength(baseaddresses, count);
-        for i:=0 to count-1 do
+      setlength(baseaddresses, count);
+      for i:=0 to count-1 do
+      begin
+        s:=f.ReadAnsiString;
+        ml.add(s);
+        if symhandler.getmodulebyname(s,modinfo) then
+          baseaddresses[i]:=modinfo.baseaddress
+        else
+          baseaddresses[i]:=0;
+      end;
+
+
+      while f.Position<f.Size do
+      begin
+        x:=f.ReadWord;
+        if x=$ffff then
+          addAddress(f.ReadQWord)
+        else
         begin
-          s:=f.ReadAnsiString;
-          ml.add(s);
-          if symhandler.getmodulebyname(s,modinfo) then
-            baseaddresses[i]:=modinfo.baseaddress
-          else
-            baseaddresses[i]:=0;
+          address:=f.ReadQWord;
+          if baseaddresses[x]<>0 then
+            addAddress(baseaddresses[x]+address);
         end;
-
-
-        while f.Position<f.Size do
-        begin
-          x:=f.ReadWord;
-          if x=$ffff then
-            addAddress(f.ReadQWord)
-          else
-          begin
-            address:=f.ReadQWord;
-            if baseaddresses[x]<>0 then
-              addAddress(baseaddresses[x]+address);
-          end;
-        end;
-      finally
-        f.free;
       end;
     end;
 
@@ -934,18 +929,6 @@ end;
 
 procedure TfrmCodeFilter.btnFromUnwindInfoClick(Sender: TObject);
 {$ifdef windows}
-type
-  UNWIND_INFO=bitpacked record
-    version: 0..7;
-    flags: 0..31;
-    sizeOfProlog: byte;
-    countOfUnwindCodes: byte;
-    frameregister: 0..15;
-    frameregisteroffset: 0..15;
-  end;
-
-  PUNWIND_INFO=^UNWIND_INFO;
-
 var
   sellist: TfrmSelectionList;
   md: tmoduledata;
@@ -954,12 +937,6 @@ var
   i: integer;
 
   rte: TRunTimeEntry;
-
-  modulemem: PBytearray=nil;
-  br: ptruint;
-
-  pui: PUNWIND_INFO;
-
 {$endif}
 begin
   {$ifdef windows}
@@ -982,38 +959,9 @@ begin
       el:=peinfo_getExceptionList(md.moduleaddress);
       if el<>nil then
       begin
-        getmem(modulemem, md.modulesize);
-        try
-          if (modulemem<>nil) and (readprocessmemory(processhandle, pointer(md.moduleaddress), modulemem,md.modulesize,br)=false) then
-            freememandnil(modulemem);
-
-          for i:=0 to el.Count-1 do
-          begin
-            rte:=el[i];
-
-            //check if unwind info is valid
-            if (modulemem<>nil) then
-            begin
-              pui:=@modulemem[rte.unwind];
-              if ((pui^.version<>1) or (pui^.flags=4)) then
-              // or alternatively:
-              //if ((pui^.countOfUnwindCodes=0) and (pui^.sizeOfProlog=0) and (pui^.frameregister=0) and (pui^.frameregisteroffset=0)) then
-              begin
-                continue; //invalid
-              end;
-
-            end;
-
-            addAddress(md.moduleaddress+rte.start);
-          end;
-
-        finally
-          if (modulemem<>nil) then
-            freememandnil(modulemem);
-        end;
+        for i:=0 to el.Count-1 do
+          addAddress(md.moduleaddress+el[i].start);
       end;
-
-      el.free;
     end;
 
     lblAddressList.caption:=format(rsAddressList, [callmap.Count]);
@@ -1024,12 +972,6 @@ begin
   {$else}
   MessageDlg('Only for windows',mtError,[mbok],0);
   {$endif}
-end;
-
-procedure TfrmCodeFilter.FormShow(Sender: TObject);
-begin
-  btnFromUnwindInfo.visible:=processhandler.is64Bit;
-
 end;
 
 procedure TfrmCodeFilter.frmLaunchBranchMapperClick(Sender: TObject);

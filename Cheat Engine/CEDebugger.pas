@@ -13,7 +13,7 @@ uses {$ifdef darwin}
      {$endif}
      Classes,LCLIntf,sysutils,CEFuncProc,Messages,forms,SyncObjs,
      dialogs,controls,Graphics,NewKernelHandler,symbolhandler,StrUtils,
-     ComCtrls ,Assemblerunit,addressparser, vmxfunctions;
+     ComCtrls ,Assemblerunit,addressparser;
 
 
 type TReadonly = record
@@ -46,8 +46,8 @@ type TDebugBreakProcess = function(processhandle:THandle):boolean; stdcall;
 type TDebugActiveProcessStop= function(pid: dword):boolean; stdcall;
 type TDebugSetProcessKillOnExit=function(KillOnExit: boolean):boolean; stdcall;
 type TIsDebuggerPresent=function:boolean; stdcall;
-type TntSuspendProcess=function(ProcessID:HANDLE):DWORD; stdcall;
-type TntResumeProcess=function(ProcessID:HANDLE):DWORD; stdcall;
+type TntSuspendProcess=function(ProcessID:Dword):DWORD; stdcall;
+type TntResumeProcess=function(ProcessID:Dword):DWORD; stdcall;
 
 
 
@@ -78,7 +78,14 @@ type
   end;
 
   NTSTATUS = LONG;
-
+  _CLIENT_ID = record
+    UniqueProcess: HANDLE;
+    UniqueThread: HANDLE;
+  end;
+  CLIENT_ID = _CLIENT_ID;
+  PCLIENT_ID = ^CLIENT_ID;
+  TClientID = CLIENT_ID;
+  PClientID = ^TClientID;
 
   KPRIORITY = LONG;
   KAFFINITY = ULONG_PTR;
@@ -176,14 +183,14 @@ implementation
 uses debughelper,debuggertypedefinitions, debugeventhandler, MainUnit,frmFloatingPointPanelUnit,
      Memorybrowserformunit,disassembler,frmTracerUnit,foundcodeunit,kerneldebugger,
      advancedoptionsunit,formChangedAddresses,frmstacktraceunit,frmThreadlistunit,
-     formdebugstringsunit,formsettingsunit,processwindowunit,plugin,processhandlerunit(*,frmCreatedProcessListUnit*), mainunit2;
+     formdebugstringsunit,formsettingsunit,processwindowunit,plugin,processhandlerunit(*,frmCreatedProcessListUnit*);
 
 
 resourcestring
   rsPleaseTargetAnotherProcess = 'Please target another process';
   rsYouMustFirstOpenAProcess = 'You must first open a process';
-  rsThisWillAttachTheDebuggerOfCheatEngineToTheCurrent = 'This will attach the debugger of '+strCheatEngine+' to the current process.';
-  rsDoNotCloseCE = 'If you close '+strCheatEngine+' while the game is running, the game will close too. Are you sure you want to do this?';
+  rsThisWillAttachTheDebuggerOfCheatEngineToTheCurrent = 'This will attach the debugger of Cheat Engine to the current process.';
+  rsDoNotCloseCE = 'If you close Cheat Engine while the game is running, the game will close too. Are you sure you want to do this?';
   rsContinue = 'Continue?';
   rsDebugError = 'I couldn''t attach the debugger to this process! You could try to open the process using the processpicker and try that! If that also doesn''t work check if '
     +'you have debugging rights.';
@@ -209,22 +216,10 @@ var mes: string;
     i: integer;
 begin
   result:=false;
-  if processid=GetCurrentProcessId then
-  begin
-    if MainThreadID=GetCurrentThreadId then
-      MessageDlg(rsPleaseTargetAnotherProcess,mtError,[mbOK],0);
-
-    exit(false);
-  end;
+  if processid=GetCurrentProcessId then raise exception.create(rsPleaseTargetAnotherProcess);
 
 
-  if processhandle=0 then
-  begin
-    if MainThreadID=GetCurrentThreadId then
-      MessageDlg(rsYouMustFirstOpenAProcess,mtError,[mbOK],0);
-
-    exit(false);
-  end;
+  if processhandle=0 then raise exception.create(rsYouMustFirstOpenAProcess);
 
   if (debuggerthread=nil) then
   begin
@@ -248,7 +243,7 @@ begin
       try
         Debuggerthread:=TDebuggerThread.MyCreate2(processid);
       except
-        raise EDebuggerAttachException.Create(rsDebugError);
+        raise exception.Create(rsDebugError);
       end;
 
       result:=true;

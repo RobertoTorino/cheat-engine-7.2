@@ -15,11 +15,10 @@
 PINT_VECTOR intvector=NULL;
 
 #ifdef DEBUGINTHANDLER
-criticalSection cinthandlerMenuCS={.name="cinthandlerMenuCS", .debuglevel=2};
+criticalSection cinthandlerMenuCS;
 #endif
 
 int IntHandlerDebug=0;
-int ClearDR6OnInterrupt=0;
 
 
 #define SETINT(INTNR) intvector[INTNR].wLowOffset=(WORD)(UINT64)inthandler##INTNR; \
@@ -325,21 +324,19 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
   DWORD thisAPICID;
   int cpunr=0;
 
-  thisAPICID=getAPICID();
- // nosendchar[getAPICID()]=0;
-
   enableserial();
 
-  emergencyOutputOnly=0;
-
-  sendstring("\n------------------------------------------\n");
-  sendstringf("|             EXCEPTION %d  (%x)               |\n", intnr, intnr);
-  sendstring("------------------------------------------\n");
 
   ddDrawRectangle(DDHorizontalResolution-100,0,100,100,_rdtsc());
 
   if (readMSR(IA32_FS_BASE_MSR)==0)
   {
+
+#ifdef DEBUG
+  sendstringCS.ignorelock=1;
+  sendstringfCS.ignorelock=1;
+#endif
+
 
     sendstringf("Invalid FS base during exception %d  CR2=%6!!\n",intnr, getCR2());
 
@@ -361,23 +358,6 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
   pcpuinfo cpuinfo=getcpuinfo();
   cpunr=cpuinfo->cpunr;
 
-#ifdef USENMIFORWAIT
-  if ((intnr==2) && (cpuinfo->WaitTillDone))
-  {
-    sendstringf("%d: NMI received while handling a vmexit\n", getcpunr());
-
-    cpuinfo->WaitingTillDone=1;
-    while (cpuinfo->WaitTillDone) _pause();
-
-    if (cpuinfo->eptUpdated)
-      ept_invalidate();
-
-
-    return 0;
-  }
-#endif
-
-
   //debug, remove:
   //if PIC_StillEnabled
   //outportb(0x20,0x20);
@@ -396,7 +376,7 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
     setDR7(0ULL);
   }
 
-
+  thisAPICID=getAPICID();
 
 #ifdef CHECKAPICID
   if (thisAPICID!=cpuinfo->apicid)
@@ -410,13 +390,17 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
 
 
 
+  sendstringCS.lockcount=0;
+  sendstringCS.locked=0;
+  sendstringfCS.lockcount=0;
+  sendstringfCS.locked=0;
 
 
  // sendstringf("interrupt fired : %d (%x)\n\r", intnr,intnr);
 
   sendstringf("cpunr=%d (apicid=%d)\n\r",cpunr, thisAPICID);
   sendstringf("intnr=%d\n\r",intnr);
-  sendstringf("rsp=%6\n\r",getRSP());
+  sendstringf("rsp=%x\n\r",getRSP());
   sendstringf("cr2=%6\n\r",getCR2());
   errorcode=0;
 
@@ -498,11 +482,10 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
 
   sendstringf("Checking if it was an expected interrupt\n\r");
   cpuinfo->LastExceptionRIP=stack[16+errorcode];
-  cpuinfo->LastInterrupt=(unsigned char)intnr;
 
   if (cpuinfo->OnException[0].RIP)
   {
-    //nosendchar[thisAPICID]=0;
+    nosendchar[thisAPICID]=0;
     sendstringf("OnException is set. Passing it to longjmp\n");  //no need to set rflags back, the original state contains that info
 
     longjmp(cpuinfo->OnException, 0x100 | intnr);
@@ -635,10 +618,6 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
   sendstring("End of interrupt\n\r");
 
 
-  if ((intnr==1) && (ClearDR6OnInterrupt))
-    setDR6(0xffff0ff0);
-
-
 #ifdef DEBUGINTHANDLER
 
   csEnter(&cinthandlerMenuCS);
@@ -655,8 +634,6 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
     sendstring("1: Exit from interrupt\n\r");
     sendstring("2: Check CRC values\n\r");
     sendstring("3: Get vmstate\n\r");
-    sendstring("4: Main menu\n\r");
-
     sendstring("p: Previous vmstates\n\r");
 
 
@@ -679,10 +656,6 @@ int cinthandler(unsigned long long *stack, int intnr) //todo: move to it's own s
 
       case '3':
         sendvmstate(cpuinfo, NULL);
-        break;
-
-      case '4':
-        menu();
         break;
 
       case 'p':

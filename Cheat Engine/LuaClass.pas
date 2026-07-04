@@ -32,7 +32,7 @@ type
     property Count: integer read getCount;
   end;
 
-function luaclass_createMetaTable(L: Plua_State;garbagecollectable: boolean=false): integer;
+function luaclass_createMetaTable(L: Plua_State): integer;
 
 procedure luaclass_addClassFunctionToTable(L: PLua_State; metatable: integer; userdata: integer; functionname: string; f: lua_CFunction);
 procedure luaclass_addPropertyToTable(L: PLua_State; metatable: integer; userdata: integer; propertyname: string; getfunction: lua_CFunction; setfunction: lua_CFunction);
@@ -48,12 +48,9 @@ procedure luaclass_setAutoDestroy(L: PLua_State; metatable: integer; state: bool
 
 function luaclass_getClassObject(L: PLua_state; paramstart: pinteger=nil; paramcount: pinteger=nil): pointer; //inline;
 
-procedure luaclass_newClass(L: PLua_State; o: TObject; garbagecollectable: boolean=false); overload;
-procedure luaclass_newClass(L: PLua_State; o: pointer; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false); overload;
-procedure luaclass_newClass(L: PLua_State; o: TObject; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false); overload;
-procedure luaclass_newClassFunction(L: PLua_State; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false);
-
-
+procedure luaclass_newClass(L: PLua_State; o: TObject); overload;
+procedure luaclass_newClass(L: PLua_State; o: TObject; InitialAddMetaDataFunction: TAddMetaDataFunction); overload;
+procedure luaclass_newClassFunction(L: PLua_State; InitialAddMetaDataFunction: TAddMetaDataFunction);
 
 procedure luaclass_register(c: TClass; InitialAddMetaDataFunction: TAddMetaDataFunction);
 
@@ -63,14 +60,16 @@ implementation
 
 uses LuaClassArray, LuaObject, LuaComponent, luahandler;
 
-var lookuphelp: TPointerToPointerTree; //does not update after initialization (static)
-    lookuphelp2: TPointerToPointerTree; //for classes that inherit from the main classes (can update after initialization, dynamic)
-    lookuphelp2MREW: TMultiReadExclusiveWriteSynchronizer;
+var classlist: Tlist;
+    lookuphelp: TPointerToPointerTree;
+    lookuphelpmrew: TMultiReadExclusiveWriteSynchronizer;
+
     objectcomparefunctionref: integer=0;
 
 type
   TClasslistentry=record
     c: TClass;
+    depth: integer;
     f: TAddMetaDataFunction;
   end;
   PClassListEntry=^TClassListEntry;
@@ -118,58 +117,70 @@ procedure luaclass_register(c: TClass; InitialAddMetaDataFunction: TAddMetaDataF
 var cle: PClasslistentry;
     t: TClass;
 begin
-  if lookuphelp=nil then
+  if classlist=nil then
   begin
+    classlist:=tlist.create;
+    lookuphelpmrew:=TMultiReadExclusiveWriteSynchronizer.Create;
     lookuphelp:=TPointerToPointerTree.Create;
-    lookuphelp2:=TPointerToPointerTree.create;
-    lookuphelp2MREW:=TMultiReadExclusiveWriteSynchronizer.Create;
   end;
 
   getmem(cle, sizeof(TClasslistentry));
 
   cle.c:=c;
-  cle.f:=InitialAddMetaDataFunction;
+  cle.depth:=0;
+  cle.f:=InitialAddMetaDataFunction;       //todo: change to a map
+  t:=c;
 
-  lookuphelp.Values[c]:=cle;
+  while t<>nil do
+  begin
+    inc(cle.depth);
+    t:=t.ClassParent;
+  end;
+
+  classlist.Add(cle);
 end;
 
 function findBestClassForObject(O: TObject): TAddMetaDataFunction;
 var
-  best: PClassListEntry;
-  oclass: Tclass;
+    i: integer;
+    cle: PClassListEntry;
+
+    best: PClassListEntry; //TClasslistentry;
+
+    oclass: Tclass;
 begin
   result:=nil;
   if o=nil then exit;
 
   oclass:=o.ClassType;
 
+  lookuphelpmrew.Beginread;
   best:=lookuphelp.Values[oclass];
-  if best<>nil then exit(best^.f);
+  lookuphelpmrew.Endread;
 
-  //not a main type, check the child types
-  lookuphelp2MREW.beginread;
-  best:=lookuphelp2.values[oclass];
-  lookuphelp2MREW.endread;
-  if best<>nil then exit(best^.f);
+  if best<>nil then
+    exit(best^.f);
 
-  //find it in the static typestore
-  oclass:=oclass.ClassParent;
-  while oclass<>nil do
+  if classlist<>nil then
   begin
-    best:=lookuphelp.Values[oclass];
-    if best<>nil then
+    for i:=0 to classlist.Count-1 do
     begin
-      //add to the secondary list
-      lookuphelp2MREW.Beginwrite;
-      lookuphelp2.values[o.classtype]:=best;
-      lookuphelp2MREW.endwrite;
-      exit(best^.f);
+      cle:=classlist[i];
+      if o.InheritsFrom(cle.c) and ((best=nil) or (cle.depth>best^.depth)) then
+        best:=cle;
     end;
-    oclass:=oclass.ClassParent;
+
+    result:=best^.f;
+
+    lookuphelpmrew.Beginwrite;
+    lookuphelp.Values[oclass]:=best;
+    lookuphelpmrew.Endwrite;
   end;
+
+
 end;
 
-procedure luaclass_newClassFunction(L: PLua_State; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false);
+procedure luaclass_newClassFunction(L: PLua_State; InitialAddMetaDataFunction: TAddMetaDataFunction);
 //converts the item at the top of the stack to a class object
 var userdata, metatable: integer;
 begin
@@ -178,15 +189,13 @@ begin
   begin
     userdata:=lua_gettop(L);
 
-    metatable:=luaclass_createMetaTable(L, garbagecollectable);
+    metatable:=luaclass_createMetaTable(L);
     InitialAddMetaDataFunction(L, metatable, userdata);
-
     lua_setmetatable(L, userdata);
   end;
 end;
 
-
-procedure luaclass_newClass(L: PLua_State; o: pointer; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false);
+procedure luaclass_newClass(L: PLua_State; o: TObject; InitialAddMetaDataFunction: TAddMetaDataFunction);
 begin
   if (o<>nil) and (Assigned(InitialAddMetaDataFunction)) then
   begin
@@ -197,21 +206,14 @@ begin
     lua_pushnil(L);
 end;
 
-procedure luaclass_newClass(L: PLua_State; o: TObject; InitialAddMetaDataFunction: TAddMetaDataFunction; garbagecollectable: boolean=false);
-begin
-  luaclass_newClass(L, pointer(o), InitialAddMetaDataFunction, garbagecollectable);
-end;
 
-
-
-
-procedure luaclass_newClass(L: PLua_State; o: TObject; garbagecollectable: boolean=false); overload;
+procedure luaclass_newClass(L: PLua_State; o: TObject); overload;
 var InitialAddMetaDataFunction: TAddMetaDataFunction;
 begin
   if o<>nil then
   begin
     InitialAddMetaDataFunction:=findBestClassForObject(o);
-    luaclass_newClass(L, o, InitialAddMetaDataFunction, garbagecollectable);
+    luaclass_newClass(L, o, InitialAddMetaDataFunction);
   end
   else
     lua_pushnil(L);
@@ -660,14 +662,14 @@ begin
   lua_settable(L, metatable);
 end;
 
-function luaclass_createMetaTable(L: Plua_State; garbagecollectable: boolean=false): integer;
+function luaclass_createMetaTable(L: Plua_State): integer;
 //creates a table to be used as a metatable
 //returns the stack index of the table
 begin
   lua_newtable(L);
   result:=lua_gettop(L);
 
-  luaclass_setAutoDestroy(L, result, garbagecollectable); //default do not destroy when garbage collected. Let the user do it
+  luaclass_setAutoDestroy(L, result, false); //default do not destroy when garbage collected. Let the user do it
 
   //set the index method
   lua_pushstring(L, '__index');

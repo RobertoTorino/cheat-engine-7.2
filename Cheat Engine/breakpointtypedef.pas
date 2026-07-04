@@ -45,22 +45,17 @@ type
     breakpointTrigger: TBreakpointTrigger;
     debugRegister: integer;  //if debugRegister bp this will hold which debug register is used for it
 
-    debuggerinterfacewatchid: integer; //watch id in case of a bpmDBVM or bpmGDB
+    dbvmwatchid: integer; //DBVM watch id in case of a bpmDBVM
 
 
 
     FoundcodeDialog: TFoundcodedialog;
-
     frmchangedaddresses: Tfrmchangedaddresses;
     frmTracer: TfrmTracer;
     tracecount: integer;
     traceendcondition: pchar;
     tracestepOver: boolean; //when set the tracer will step over instead of single step
-    traceStepOverRep: boolean; //when set the tracer will step over rep instructions
     traceNoSystem: boolean; //when set the tracer will step over system module addresses
-    traceStayInsideModule: boolean; //when set the tracer will step over any address not inside the startmodule
-    traceStartmodulebase: ptruint;
-    traceStartmodulesize: dword;
 
     isTracerStepOver: boolean; //
 
@@ -72,8 +67,7 @@ type
     OneTimeOnly: boolean; //true if the breakpoint should be removed after the first time it is hit
     StepOverBp: boolean;
 
-    changereg: tregistermodificationBP; //todo: obsolete this and replace by just changeregEx
-    changeregEx: TRegisterModificationBPEx;
+    changereg: tregistermodificationBP;
 
     conditonalbreakpoint: record
       script: pchar;

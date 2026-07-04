@@ -12,7 +12,7 @@ uses
   macport,
   {$endif}
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
-  ExtCtrls, memscan, syncobjs, betterControls,SyncObjs2;
+  ExtCtrls, memscan, syncobjs;
 
 type
 
@@ -32,7 +32,13 @@ type
   public
     { public declarations }
 
-    WaitForThread: TThread;
+    {$IFDEF windows}
+    WaitForHandle: THandle;
+    {$ENDIF}
+
+    {$ifdef darwin}
+    WaitForEvent: TEvent;
+    {$endif}
 
     memscan: TMemScan;
     property reason: TPostScanState read fReason write setReason;
@@ -91,19 +97,54 @@ begin
 end;
 
 procedure TfrmBusy.Timer1Timer(Sender: TObject);
+var
+  {$ifdef windows}
+  r:dword;
+  {$endif}
+  {$ifdef darwin}
+  r: TWaitResult;
+  {$endif}
 begin
-  if (WaitForThread<>nil) then
+  {$IFDEF windows} if (WaitForHandle<>0) then  {$ENDIF}
+  {$IFDEF darwin} if (WaitForEvent<>nil) then  {$ENDIF}
   begin
-    if WaitForThread.WaitTillDone(50) then
+    {$IFDEF darwin}
+    r:=WaitForEvent.WaitFor(50);
+    if r<>wrTimeout then
     begin
       oktoclose:=true;
 
       if fsModal in FFormState then
-        modalresult:=mrok
+      begin
+        if r=wrSignaled then
+          modalresult:=mrok
+        else
+          modalresult:=mrcancel;
+      end
       else
         close;
     end;
 
+    {$ENDIF}
+
+    {$ifdef windows}
+
+    r:=WaitForSingleObject(WaitForHandle, 50);
+    if r<>WAIT_TIMEOUT then
+    begin
+      oktoclose:=true;
+
+      if fsModal in FFormState then
+      begin
+        if r=WAIT_OBJECT_0 then
+          modalresult:=mrok
+        else
+          modalresult:=mrcancel;
+      end
+      else
+        close;
+    end;
+    {$endif}
   end;
 
   if (memscan<>nil) and (reason<>memscan.postscanstate) then

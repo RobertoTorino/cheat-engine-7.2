@@ -78,8 +78,6 @@ end;
 
 implementation
 
-uses betterControls;
-
 function TTablist.getTabText(i: integer): string;
 begin
   result:=fTabs[i];
@@ -177,8 +175,6 @@ end;
 procedure TTablist.MouseDown(Button: TMouseButton; Shift:TShiftState; X,Y:Integer);
 var i: integer;
 begin
-  if not enabled then exit;
-
   i:=GetTabIndexAt(x,y);
   if i<>-1 then
     selectedTab:=i;
@@ -251,7 +247,7 @@ end;
 
 function TTablist.AddTab(t: string): integer;
 begin
-  fTabs.Add(t.QuotedString(' '));
+  fTabs.Add(t);
   result:=ftabs.count-1;
 
   if assigned(fOnTabCreate) then
@@ -279,23 +275,11 @@ var
   selectedx: integer;
 
 
-  gradientStart: TColor;
 begin
   inherited Paint;
 
   selectedx:=0;
   lastx:=0;
-
-  if ShouldAppsUseDarkMode then
-    gradientStart:=$222222
-  else
-    gradientStart:=$ffffff;
-
-  canvas.brush.color:=color;
-  canvas.pen.color:=color;
-  canvas.brush.style:=bsSolid;
-  canvas.FillRect(ClientRect);
-
 
   //create a total of 'fTabs.count' tabs
   for j:=offset to fTabs.count-1 do
@@ -310,18 +294,12 @@ begin
     end
     else
     begin
-      if ShouldAppsUseDarkMode then
-        gradientColor:=$444444
-      else
-        gradientColor:=$d0d0d0;
+      gradientColor:=$d0d0d0;
     end;
 
-    if ShouldAppsUseDarkMode then
-      Canvas.Pen.Color:=$505050
-    else
-      Canvas.Pen.Color:=$a0a0a0;
+    Canvas.Pen.Color:=$a0a0a0;
     canvas.Rectangle(lastx,0,lastx+tabWidth,height);
-    Canvas.GradientFill(rect(lastx+1,1,lastx+tabwidth-1,height-1),gradientStart,gradientColor, gdVertical);
+    Canvas.GradientFill(rect(lastx+1,1,lastx+tabwidth-1,height-1),clWhite,gradientColor, gdVertical);
 
     oldstyle:=canvas.Brush.Style;
 
@@ -332,10 +310,7 @@ begin
     inc(lastx, tabwidth);
   end;
 
-  if ShouldAppsUseDarkMode then
-    canvas.Pen.Color:=$303030
-  else
-    canvas.Pen.Color:=$808080;
+  canvas.Pen.Color:=$808080;
   canvas.Line(0,height-1,width,height-1);
 
   canvas.Pen.Color:=color;
@@ -415,9 +390,7 @@ begin
   controlWithArrows.AnchorSideBottom.Side:=asrTop;
   controlWithArrows.AnchorSideRight.Control:=Self;
   controlWithArrows.AnchorSideRight.Side:=asrRight;
-  controlWithArrows.BorderSpacing.Right:=10;
-
-
+  controlWithArrows.BorderSpacing.Right:=50;
 end;
 
 destructor TTablist.Destroy;

@@ -139,8 +139,6 @@ type
     wasidle: boolean; //state of isIdle since last call to waitForAndHandleNetworkEvent
 
     newProgressbarLabel: string;
-
-    fShouldQuit: boolean;
     procedure UpdateProgressbarLabel; //synced
 
     procedure InitializeCompressedPtrVariables;
@@ -295,8 +293,6 @@ type
     useheapdata: boolean;
     useOnlyHeapData: boolean;
 
-    scanPagedMemoryOnly: boolean;
-
     findValueInsteadOfAddress: boolean;
     valuetype: TVariableType;
     valuescandword: dword;
@@ -311,7 +307,6 @@ type
 
 
     mustEndWithSpecificOffset: boolean;
-    mustEndWithSpecificOffsetMaxDeviation: dword;
     mustendwithoffsetlist: array of dword;
     onlyOneStaticInPath: boolean;
     noReadOnly: boolean;
@@ -417,7 +412,6 @@ type
     procedure TerminateAndSaveState;
     procedure execute_nonInitializer;
     procedure execute; override;
-    procedure Terminate; //terminate is not overridable but this works for simple stuff, like the pointermap generator quit flag
     constructor create(suspended: boolean);
     destructor destroy; override;
 
@@ -554,11 +548,7 @@ begin
 
   if fcontroller.compressedptr then
   begin
-    if fcontroller.mustEndWithSpecificOffsetMaxDeviation=0 then
-      EntrySize:=fcontroller.MaxBitCountModuleOffset+fcontroller.MaxBitCountModuleIndex+fcontroller.MaxBitCountLevel+fcontroller.MaxBitCountOffset*(fcontroller.maxlevel-length(fcontroller.mustendwithoffsetlist))
-    else
-      EntrySize:=fcontroller.MaxBitCountModuleOffset+fcontroller.MaxBitCountModuleIndex+fcontroller.MaxBitCountLevel+fcontroller.MaxBitCountOffset*(fcontroller.maxlevel);
-
+    EntrySize:=fcontroller.MaxBitCountModuleOffset+fcontroller.MaxBitCountModuleIndex+fcontroller.MaxBitCountLevel+fcontroller.MaxBitCountOffset*(fcontroller.maxlevel-length(fcontroller.mustendwithoffsetlist));
     EntrySize:=(EntrySize+7) div 8;
   end
   else
@@ -808,7 +798,6 @@ begin
       s.WriteQWord(BaseStop);
       s.WriteByte(ifthen(onlyOneStaticInPath,1,0));
       s.writebyte(ifthen(mustEndWithSpecificOffset,1,0));
-      s.writeDword(mustEndWithSpecificOffsetMaxDeviation);
       s.writeWord(length(mustendwithoffsetlist));
       for i:=0 to length(mustendwithoffsetlist)-1 do
         s.WriteDWord(mustendwithoffsetlist[i]);
@@ -2586,10 +2575,8 @@ begin
             end;
           end;
 
-          {$ifndef DEBUGPROTOCOL}
-          if (childnodes[i].socket<>nil) and (childnodes[i].scandatauploader=nil) and (childnodes[i].LastUpdateReceived<>0) and (GetTickCount64-childnodes[i].LastUpdateReceived>120000) then
+          if (childnodes[i].socket<>nil) and (childnodes[i].scandatauploader=nil) and (GetTickCount64-childnodes[i].LastUpdateReceived>120000) then
             handleChildException(i, rsNoUpdateFromTheClientForOver120Sec); //marks the child as disconnected
-          {$endif}
 
           inc(i);
         end;
@@ -3513,11 +3500,7 @@ begin
         MaxBitCountModuleOffset:=32;
 
 
-      if mustEndWithSpecificOffsetMaxDeviation=0 then
-        MaxBitCountLevel:=getMaxBitCount(maxlevel-length(mustendwithoffsetlist) , false) //counted from 1.  (if level=4 then value goes from 1,2,3,4) 0 means no offsets. This can happen in case of a pointerscan with specific end offsets, which do not get saved.
-      else
-        MaxBitCountLevel:=getMaxBitCount(maxlevel, false);
-
+      MaxBitCountLevel:=getMaxBitCount(maxlevel-length(mustendwithoffsetlist) , false); //counted from 1.  (if level=4 then value goes from 1,2,3,4) 0 means no offsets. This can happen in case of a pointerscan with specific end offsets, which do not get saved.
       MaxBitCountOffset:=getMaxBitCount(sz, false);
       if unalligned=false then MaxBitCountOffset:=MaxBitCountOffset - 2;
 
@@ -3611,7 +3594,6 @@ begin
     BaseStop:=ReadQword;
     onlyOneStaticInPath:=readByte=1;
     mustEndWithSpecificOffset:=readbyte=1;
-    mustEndWithSpecificOffsetMaxDeviation:=ReadDWord;
     setlength(mustendwithoffsetlist, ReadWord);
     for i:=0 to length(mustendwithoffsetlist)-1 do
       mustendwithoffsetlist[i]:=ReadDWord;
@@ -4548,19 +4530,20 @@ begin
 
       progressbar.Position:=0;
       try
-        pointerlisthandler:=TReversePointerListHandler.Create(startaddress,stopaddress,not unalligned,progressbar, scanPagedMemoryOnly, noreadonly, MustBeClassPointers, acceptNonModuleClasses, useStacks, stacksAsStaticOnly, threadstacks, stacksize, mustStartWithBase, BaseStart, BaseStop, includeSystemModules, RegionFilename, @fShouldQuit);
+
+        pointerlisthandler:=TReversePointerListHandler.Create(startaddress,stopaddress,not unalligned,progressbar, noreadonly, MustBeClassPointers, acceptNonModuleClasses, useStacks, stacksAsStaticOnly, threadstacks, stacksize, mustStartWithBase, BaseStart, BaseStop, includeSystemModules, RegionFilename);
+
+
         progressbar.position:=100;
 
-        if terminated then
-        begin
-          fOnScanDone(self, false,'');
-          exit;
-        end;
+
+
+
       except
         on e: exception do
         begin
           haserror:=true;
-          errorString:=rsFailureCopyingTargetProcessMemory + '('+e.message+')';
+          errorString:=rsFailureCopyingTargetProcessMemory;
 
           if assigned(fOnScanDone) then
             fOnScanDone(self, haserror, errorstring);
@@ -4724,14 +4707,9 @@ begin
           result.writeByte(MaxBitCountLevel);
           result.writeByte(MaxBitCountOffset);
 
-          if mustEndWithSpecificOffsetMaxDeviation=0 then
-          begin
-            result.writeByte(length(mustendwithoffsetlist));
-            for i:=0 to length(mustendwithoffsetlist)-1 do
-              result.writeDword(mustendwithoffsetlist[i]);
-          end
-          else
-            result.writeByte(0);
+          result.writeByte(length(mustendwithoffsetlist));
+          for i:=0 to length(mustendwithoffsetlist)-1 do
+            result.writeDword(mustendwithoffsetlist[i]);
         end;
 
         result.writebyte(ifthen(mustStartWithBase,1,0));
@@ -4978,9 +4956,6 @@ begin
       child.trusted:=entry.trusted;
     end;
 
-    child.LastUpdateReceived:=GetTickCount64;
-
-
 
     len:=sizeof(ipname);
     if getpeername(sockethandle, ipname, len)<>SOCKET_ERROR then
@@ -5216,7 +5191,6 @@ begin
   scanner.OutOfDiskSpace:=@outofdiskspace;
 
   scanner.mustEndWithSpecificOffset:=mustEndWithSpecificOffset;
-  scanner.mustEndWithSpecificOffsetMaxDeviation:=mustEndWithSpecificOffsetMaxDeviation;
   scanner.mustendwithoffsetlist:=mustendwithoffsetlist;
   scanner.useHeapData:=useHeapData;
   scanner.useOnlyHeapData:=useHeapData;
@@ -5357,7 +5331,6 @@ LimitToMaxOffsetsPerNode: byte //boolean
 onlyOneStaticInPath: byte; //boolean
 instantrescan: byte //boolean (not really needed, but it's a nice padding)
 mustEndWithSpecificOffset: byte; //boolean ( ^ ^ )
-mustEndWithSpecificOffsetMaxDeviation: dword;
 maxoffsetspernode: integer;
 basestart: qword;
 basestop: qword;
@@ -5394,7 +5367,6 @@ begin
   s.writebyte(ifthen(onlyOneStaticInPath,1,0));
   s.writebyte(ifthen(instantrescan,1,0));
   s.writebyte(ifthen(mustEndWithSpecificOffset,1,0));
-  s.WriteDword(mustEndWithSpecificOffsetMaxDeviation);
   s.WriteDWord(maxoffsetspernode);
   s.WriteQWord(basestart);
   s.WriteQWord(basestop);
@@ -5414,12 +5386,6 @@ begin
 
   savestate:=true;
   terminate;
-end;
-
-procedure TPointerscancontroller.Terminate;
-begin
-  fShouldQuit:=true;
-  tthread(self).Terminate;
 end;
 
 constructor TPointerscanController.create(suspended: boolean);

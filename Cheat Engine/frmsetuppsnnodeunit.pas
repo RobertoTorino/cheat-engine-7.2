@@ -12,7 +12,7 @@ uses
   windows,
   {$endif}
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs,
-  StdCtrls, ExtCtrls, math, registry, betterControls;
+  StdCtrls, ExtCtrls, math, registry;
 
 type
 
@@ -77,7 +77,7 @@ var
 
 implementation
 
-uses CEFuncProc, mainunit2;
+uses CEFuncProc;
 
 {$R *.lfm}
 
@@ -122,16 +122,13 @@ begin
   reg:=tregistry.Create;
   Reg.RootKey := HKEY_CURRENT_USER;
   try
-    if Reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeConfig', false) then
+    if Reg.OpenKey('\Software\Cheat Engine\PSNNodeConfig', false) then
     begin
       if reg.ValueExists('ThreadCount') then
         edtThreadCount.Text:=IntToStr(reg.ReadInteger('ThreadCount'));
 
       if reg.ValueExists('ThreadPriority') then
         cbPriority.ItemIndex:=reg.ReadInteger('ThreadPriority');
-
-      if reg.ValueExists('ListenPort') then
-        edtPort.Text:=reg.ReadInteger('ListenPort').ToString;
 
       if reg.ValueExists('PublicName') then
         edtPublicname.text:=reg.ReadString('PublicName');
@@ -237,11 +234,10 @@ begin
   reg:=tregistry.Create;
   Reg.RootKey := HKEY_CURRENT_USER;
   try
-    if Reg.OpenKey('\Software\'+strCheatEngine+'\PSNNodeConfig', true) then
+    if Reg.OpenKey('\Software\Cheat Engine\PSNNodeConfig', true) then
     begin
       reg.WriteInteger('ThreadCount', threadcount);
       reg.WriteInteger('ThreadPriority', cbPriority.itemindex);
-      reg.WriteInteger('ListenPort', listenport);
       reg.WriteString('PublicName', edtPublicname.text);
       reg.WriteBool('AllowIncomingParents', cbAllowParents.Checked);
       reg.WriteString('ParentPassword', edtParentPassword.text);

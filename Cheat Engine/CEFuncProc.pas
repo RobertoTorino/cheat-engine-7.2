@@ -1,6 +1,3 @@
-// Copyright Cheat Engine. All Rights Reserved.
-
-
 unit CEFuncProc;
 
 {$MODE Delphi}
@@ -15,7 +12,7 @@ uses
    mactypes, LCLType,macport,
   {$endif}
   {$ifdef windows}
-   jwawindows, windows, WinUtils,
+   jwawindows, windows,
   {$endif}
   zstream, LazUTF8, LCLIntf,StdCtrls,Classes,SysUtils,dialogs,{tlhelp32,}forms,messages,
 Graphics,
@@ -38,7 +35,7 @@ hypermode,
 {$endif}
 {$endif}
  math,syncobjs, {$ifdef windows}shellapi,{$endif} ProcessHandlerUnit, controls, {$ifdef windows}shlobj, ActiveX,{$endif} strutils,
-commontypedefs, {$ifdef windows}Win32Int,{$endif} maps, lua, lualib, lauxlib{$ifdef darwin},macportdefines{$endif}, betterControls;
+commontypedefs, {$ifdef windows}Win32Int,{$endif} maps, lua, lualib, lauxlib{$ifdef darwin},macportdefines{$endif};
 
 
 const
@@ -87,7 +84,7 @@ procedure cleanModuleList(ModuleList: TStrings);
 
 function AvailMem:SIZE_T;
 function isreadable(address:ptrUint):boolean;
-function iswritable(address:ptrUint):boolean;
+
 
 procedure RemoveAddress(address: Dword;bit: Byte; vartype: Integer);
 
@@ -169,8 +166,6 @@ procedure getDriverList(list: tstrings);
 
 function EscapeStringForRegEx(const S: string): string;
 
-function getthreadCount(pid: qword): integer;
-
 function GetStackStart(threadnr: integer=0): ptruint;
 function getDiskFreeFromPath(path: string): int64;
 procedure protectme(pid: dword=0);
@@ -189,10 +184,6 @@ procedure DetachIfPossible;
 {$ifdef windows}
 procedure Log(s: string);
 {$endif}
-
-
-function requiresAdmin(featurename: string=''): boolean;
-function relaunchAsAdmin(params: widestring): boolean;
 
 
 const
@@ -363,8 +354,7 @@ uses disassembler,CEDebugger,debughelper, symbolhandler, symbolhandlerstructs,
      frmProcessWatcherUnit, KernelDebugger, formsettingsunit, MemoryBrowserFormUnit,
      savedscanhandler, networkInterface, networkInterfaceApi, vartypestrings,
      processlist, Parsers, Globals, xinput, luahandler, LuaClass, LuaObject,
-     UnexpectedExceptionsHelper, LazFileUtils, autoassembler, Clipbrd, mainunit2,
-     cpuidUnit, OpenSave, GDBServerDebuggerInterface, DebuggerInterfaceAPIWrapper;
+     UnexpectedExceptionsHelper, LazFileUtils, autoassembler, Clipbrd;
 
 
 resourcestring
@@ -421,10 +411,6 @@ resourcestring
   rsCEFPDllInjectionFailedSymbolLookupError = 'Dll injection failed: symbol lookup error';
   rsCEFPICantGetTheProcessListYouArePropablyUseinWindowsNtEtc = 'I can''t get the process list. You are propably using windows NT. Use the window list instead!';
   rsPosition = ' Position';
-  rsThisCanTakeSomeTime = 'This can take some time if you are missing the '
-    +'PDB''s and CE will look frozen. Are you sure?';
-  rsAskToRestartForAdmin = '%s requires administrator rights. '
-    +'Relaunch CE using admin rights?';
 
 function ProcessID: dword;
 begin
@@ -455,19 +441,6 @@ var mbi: _MEMORY_BASIC_INFORMATION;
 begin
   i:=VirtualQueryEx(processhandle,pointer(address),mbi,sizeof(mbi));
   result:=(i=sizeof(mbi)) and (mbi.State=mem_commit);
-end;
-
-function iswritable(address:ptrUint):boolean;
-var mbi: _MEMORY_BASIC_INFORMATION;
-  i: integer;
-begin
-  i:=VirtualQueryEx(processhandle,pointer(address),mbi,sizeof(mbi));
-  result:=(i=sizeof(mbi)) and (mbi.State=mem_commit);
-  if result then result:={$ifdef windows}
-                         ((mbi.Protect and PAGE_EXECUTE_READWRITE)=PAGE_EXECUTE_READWRITE) or
-                         ((mbi.Protect and PAGE_EXECUTE_WRITECOPY)=PAGE_EXECUTE_WRITECOPY) or
-  {$endif}
-                         ((mbi.Protect and PAGE_READWRITE)=PAGE_READWRITE);
 end;
 
 function RawToString(const buf: array of byte; vartype: integer;showashex: boolean; bufsize: integer):string;
@@ -730,7 +703,7 @@ begin
 
   //no exit yet, so use a enumeration of all threads and this processid
 
-  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,processid);
+  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
   if ths<>0 then
   begin
     te.dwSize:=sizeof(te);
@@ -813,8 +786,7 @@ end;
 {$ifdef darwin}
 Procedure InjectDll(dllname: string; functiontocall: string='');
 var s: tstringlist;
-    di: TDisableInfo;
-    //allocs: TCEAllocArray;
+    allocs: TCEAllocArray;
     injector: qword;
     returnvalue: qword;
     i: integer;
@@ -827,161 +799,153 @@ var s: tstringlist;
 
     errorstring: string;
     tid: dword;
-    //el: TCEExceptionListArray;
+    el: TCEExceptionListArray;
 begin
   outputdebugstring('cefuncproc.InjectDLL('''+dllname+''','''+functiontocall+''')');
-  if MacIsArm64 then
+  s:=tstringlist.create;
+  s.add('[enable]');
+  s.add('registersymbol(v1)');
+  s.add('registersymbol(v2)');
+  s.add('registersymbol(v3)');
+  s.add('registersymbol(injector)');
+  s.add('registersymbol(errorstr)');
+  if processhandler.is64bit then
   begin
-    raise exception.create('module injection is not yet supported on m1');
+    s.add('alloc(v1, 8)');
+    s.add('alloc(v2, 8)');
+    s.add('alloc(v3, 8)');
+    s.add('alloc(errorstr, 8)');
   end
   else
   begin
-
-    s:=tstringlist.create;
-    s.add('[enable]');
-    s.add('registersymbol(v1)');
-    s.add('registersymbol(v2)');
-    s.add('registersymbol(v3)');
-    s.add('registersymbol(injector)');
-    s.add('registersymbol(errorstr)');
-    if processhandler.is64bit then
-    begin
-      s.add('alloc(v1, 8)');
-      s.add('alloc(v2, 8)');
-      s.add('alloc(v3, 8)');
-      s.add('alloc(errorstr, 8)');
-    end
-    else
-    begin
-      s.add('alloc(v1, 4)');
-      s.add('alloc(v2, 4)');
-      s.add('alloc(v3, 4)');
-      s.add('alloc(errorstr, 4)');
-    end;
-
-    s.add('alloc(injector,512)');
-    s.add('alloc(returnvalue, 4)');
-    s.add('label(dllname)');
-    s.add('label(error)');
-    s.add('label(cleanup)');
-    s.add('');
-    s.add('injector:');
-    if processhandler.is64bit then
-    begin
-      //rsp=*8
-      s.add('mov rax,v1');
-      s.add('mov [rax],rsp');
-      s.add('push rbp');
-
-      //rsp=*0
-      s.add('mov rax,v2');
-      s.add('mov [rax],rsp');
-    end
-    else
-    begin
-      //esp=*c
-      s.add('mov [v1],esp');
-      s.add('push ebp');
-      //esp=*8
-      s.add('mov [v2],esp');
-    end;
-
-    if processhandler.is64Bit then
-    begin
-      s.add('mov rdi,dllname');
-      s.add('mov rsi,1');
-    end
-    else
-    begin
-      s.add('push 1'); //rtld lazy
-      //esp=*4
-      s.add('push dllname');
-      //esp=*0
-    end;
-
-    //64-bit: rsp=*0
-    //32-bit: esp=*0
-
-    if processhandler.is64Bit then
-    begin
-      s.add('mov rax,v3');
-      s.add('mov [rax],rsp');
-    end
-    else
-      s.add('mov [v3],esp');
-
-    s.add('call dlopen');
-    //s.add('xor eax,eax');
-
-    s.add('cmp eax,0');
-    s.add('je short error');
-
-    if processhandler.is64Bit then
-    begin
-      s.add('mov rax,returnvalue');
-      s.add('mov dword [rax],1');
-      s.adD('jmp short cleanup');
-      s.add('error:');
-      s.add('mov rax,returnvalue');
-      s.add('mov dword [rax],2');
-      s.add('call dlerror');
-      s.add('mov rsi,errorstr');
-      s.add('mov [rsi],rax');
-    end
-    else
-    begin
-      s.add('mov dword [returnvalue],1');
-      s.adD('jmp short cleanup');
-      s.add('error:');
-      s.add('mov dword [returnvalue],2');
-      s.add('call dlerror');
-      s.add('mov [errorstr],eax');
-    end;
-    s.add('cleanup:');
-
-    if processhandler.is64Bit then
-    begin
-      s.add('pop rbp');
-    end
-    else
-    begin
-      s.add('add esp,8');  //dlopen is a cdecl  (64-bit has no pushed params)
-      s.add('pop ebp');
-    end;
-
-
-    s.add('ret');
-    s.add('');
-    s.add('dllname:');
-    s.add('db '''+dllname+''',0');
-    s.add('');
-    s.add('returnvalue:');
-    s.add('dd 0');
-    s.add('');
-    s.add('[disable]');
-    s.add('dealloc(injector)');
-    s.add('dealloc(returnvalue)');
+    s.add('alloc(v1, 4)');
+    s.add('alloc(v2, 4)');
+    s.add('alloc(v3, 4)');
+    s.add('alloc(errorstr, 4)');
   end;
+
+  s.add('alloc(injector,512)');
+  s.add('alloc(returnvalue, 4)');
+  s.add('label(dllname)');
+  s.add('label(error)');
+  s.add('label(cleanup)');
+  s.add('');
+  s.add('injector:');
+  if processhandler.is64bit then
+  begin
+    //rsp=*8
+    s.add('mov rax,v1');
+    s.add('mov [rax],rsp');
+    s.add('push rbp');
+
+    //rsp=*0
+    s.add('mov rax,v2');
+    s.add('mov [rax],rsp');
+  end
+  else
+  begin
+    //esp=*c
+    s.add('mov [v1],esp');
+    s.add('push ebp');
+    //esp=*8
+    s.add('mov [v2],esp');
+  end;
+
+  if processhandler.is64Bit then
+  begin
+    s.add('mov rdi,dllname');
+    s.add('mov rsi,1');
+  end
+  else
+  begin
+    s.add('push 1'); //rtld lazy
+    //esp=*4
+    s.add('push dllname');
+    //esp=*0
+  end;
+
+  //64-bit: rsp=*0
+  //32-bit: esp=*0
+
+  if processhandler.is64Bit then
+  begin
+    s.add('mov rax,v3');
+    s.add('mov [rax],rsp');
+  end
+  else
+    s.add('mov [v3],esp');
+
+  s.add('call dlopen');
+  //s.add('xor eax,eax');
+
+  s.add('cmp eax,0');
+  s.add('je short error');
+
+  if processhandler.is64Bit then
+  begin
+    s.add('mov rax,returnvalue');
+    s.add('mov dword [rax],1');
+    s.adD('jmp short cleanup');
+    s.add('error:');
+    s.add('mov rax,returnvalue');
+    s.add('mov dword [rax],2');
+    s.add('call dlerror');
+    s.add('mov rsi,errorstr');
+    s.add('mov [rsi],rax');
+  end
+  else
+  begin
+    s.add('mov dword [returnvalue],1');
+    s.adD('jmp short cleanup');
+    s.add('error:');
+    s.add('mov dword [returnvalue],2');
+    s.add('call dlerror');
+    s.add('mov [errorstr],eax');
+  end;
+  s.add('cleanup:');
+
+  if processhandler.is64Bit then
+  begin
+    s.add('pop rbp');
+  end
+  else
+  begin
+    s.add('add esp,8');  //dlopen is a cdecl  (64-bit has no pushed params)
+    s.add('pop ebp');
+  end;
+
+
+  s.add('ret');
+  s.add('');
+  s.add('dllname:');
+  s.add('db '''+dllname+''',0');
+  s.add('');
+  s.add('returnvalue:');
+  s.add('dd 0');
+  s.add('');
+  s.add('[disable]');
+  s.add('dealloc(injector)');
+  s.add('dealloc(returnvalue)');
+
   //clipboard.AsText:=s.Text;
 
  // raise exception.create('copy to clipboard now');
 
 
-  di:=TDisableInfo.create;
-  //setlength(allocs,0);
-  if autoassemble(s,false, true, false, false, di) then
+  setlength(allocs,0);
+  if autoassemble(s,false, true, false, false, allocs,el) then
   begin
     injector:=0;
     returnvalue:=0;
-    for i:=0 to length(di.allocs)-1 do
-      if di.allocs[i].varname='injector' then
-        injector:=di.allocs[i].address
+    for i:=0 to length(allocs)-1 do
+      if allocs[i].varname='injector' then
+        injector:=allocs[i].address
       else
-      if di.allocs[i].varname='returnvalue' then
-        returnvalue:=di.allocs[i].address
+      if allocs[i].varname='returnvalue' then
+        returnvalue:=allocs[i].address
       else
-      if di.allocs[i].varname='errorstr' then
-        erroraddress:=di.allocs[i].address;
+      if allocs[i].varname='errorstr' then
+        erroraddress:=allocs[i].address;
 
     //showmessage('injector='+inttohex(injector,8));
 
@@ -1014,7 +978,7 @@ begin
 
 
     //finally free the injector
-    autoassemble(s, false, false, false, false, di);   //disable
+    autoassemble(s, false, false, false, false, allocs, el);   //disable
 
     if r=2 then
     begin
@@ -1044,12 +1008,6 @@ end;
 {$endif}
 
 {$ifdef windows}
-
-
-type
-  EInjectDLLFunctionFailure=class(Exception);
-  EInjectError=class(Exception);
-
 Procedure InjectDll(dllname: string; functiontocall: string='');
 var LoadLibraryPtr: pointer;
     GetProcAddressPtr: Pointer;
@@ -1089,10 +1047,7 @@ begin
   try
     c:=getConnection;
     if (c<>nil) and (c.isNetworkHandle(processhandle)) then //network loadModule
-    begin
-      if c.loadModule(processhandle, dllname)=false then
-        raise exception.create('Failed to load '+dllname);
-    end
+      c.loadModule(processhandle, dllname)
     else
     begin
       //todo: Change this to a full AA script (but make sure not to call injectdll in there :)  )
@@ -1363,9 +1318,9 @@ begin
             begin
               case res of
                 1: ;//success
-                2: raise EInjectError.Create(utf8toansi(rsFailedInjectingTheDLL));
-                3: raise EInjectDLLFunctionFailure.Create(utf8toansi(rsFailedExecutingTheFunctionOfTheDll));
-                else raise EInjectError.Create(utf8toansi(rsUnknownErrorDuringInjection));
+                2: raise exception.Create(utf8toansi(rsFailedInjectingTheDLL));
+                3: raise exception.Create(utf8toansi(rsFailedExecutingTheFunctionOfTheDll));
+                else raise exception.Create(utf8toansi(rsUnknownErrorDuringInjection));
               end;
             end
             else
@@ -1390,7 +1345,7 @@ begin
 
     end;
   except
-    on e:EInjectError do
+    on e:exception do
     begin
       forceLoadModule(dllname, functiontocall, 'dllInject failed: '+e.message);
     end;
@@ -2402,7 +2357,7 @@ begin
   if Thread32First(ths,te32) then
   repeat
     if te32.th32OwnerProcessID=processid then
-      threadlist.AddObject(inttohex(te32.th32ThreadID,1), tobject(te32.th32ThreadID));
+      threadlist.Add(inttohex(te32.th32ThreadID,1));
 
   until Thread32next(ths,te32)=false;
 
@@ -2641,9 +2596,7 @@ var previouswinhandle, winhandle: Hwnd;
     x: tstringlist;
     i,j:integer;
 
-    {$IFDEF WINDOWS}
     ProcessListInfo: PProcessListInfo;
-    {$ENDIF}
     tempptruint: ptruint;
 begin
   {$IFDEF windows}
@@ -2713,6 +2666,16 @@ begin
 end;
 
 procedure GetWindowList(ProcessListBox: TListBox; showInvisible: boolean=true);
+var previouswinhandle, winhandle: Hwnd;
+    winprocess: Dword;
+    temp: Pchar;
+    wintitle: string;
+
+    x: tstringlist;
+    i,j:integer;
+
+    ProcessListInfo: PProcessListInfo;
+    tempdword: dword;
 begin
   GetWindowList(ProcessListBox.Items, showInvisible);
 end;
@@ -2733,7 +2696,7 @@ begin
   Path := StrAlloc(MAX_PATH);
   SHGetSpecialFolderLocation(0, CSIDL_PERSONAL, PIDL);
   if SHGetPathFromIDList(PIDL, Path) then
-    tablesdir := WinCPToUTF8(Path)+'\'+strMyCheatTables;
+    tablesdir := WinCPToUTF8(Path)+'\My Cheat Tables';
   SHGetMalloc(AMalloc);
   AMalloc.Free(PIDL);
   StrDispose(Path);
@@ -2783,39 +2746,12 @@ var original,a: dword;
     s: PtrUInt;
     v: boolean;
 begin
-  result:=false;
   //make writable, write, restore, flush
-  if SystemSupportsWritableExecutableMemory or SkipVirtualProtectEx then
-  begin
-    v:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle,  pointer(address),size,PAGE_EXECUTE_READWRITE,original);
-    result:=writeprocessmemory(processhandle,pointer(address),buffer,size,s);
-    size:=s;
-    if v then
-      VirtualProtectEx(processhandle,pointer(address),size,original,a);
-  end
-  else
-  begin
-    if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
-      TGDBServerDebuggerInterface(CurrentDebuggerInterface).suspendProcess
-    else
-      ntsuspendProcess(processhandle);
-
-    v:=VirtualProtectEx(processhandle, pointer(address),size,PAGE_READWRITE,original);
-    if v then
-    begin
-      if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) and GDBWriteProcessMemoryCodeOnly then
-        TGDBServerDebuggerInterface(CurrentDebuggerInterface).writeBytes(address, buffer,size)
-      else
-        result:=writeprocessmemory(processhandle,pointer(address),buffer,size,s);
-
-      result:=result or VirtualProtectEx(processhandle, pointer(address),size,original,a);
-    end;
-
-    if (CurrentDebuggerInterface is TGDBServerDebuggerInterface) then
-      TGDBServerDebuggerInterface(CurrentDebuggerInterface).resumeProcess
-    else
-      ntresumeProcess(processhandle);
-  end;
+  v:=(SkipVirtualProtectEx=false) and VirtualProtectEx(processhandle,  pointer(address),size,PAGE_EXECUTE_READWRITE,original);
+  result:=writeprocessmemory(processhandle,pointer(address),buffer,size,s);
+  size:=s;
+  if v then
+    VirtualProtectEx(processhandle,pointer(address),size,original,a);
 end;
 
 function rewritecode(processhandle: thandle; address:ptrUint; buffer: pointer; var size:dword; force: boolean=false): boolean;
@@ -2886,9 +2822,6 @@ var a,b,c,d: dword;
 begin
   result:=false;
   succeed:=false;
-  {$ifdef darwinarm64}
-  exit(false);
-  {$else}
 
   {$IFDEF windows}
  needed:=0;
@@ -2987,47 +2920,45 @@ begin
     end;
 
   end;
-  {$endif}
+
 
 end;
 
 
-var
-  _CPUCOUNT: integer{$ifdef NOTMULTITHREADED}=1{$endif};
 
 function GetCPUCount: integer;
 {
 this function will return how many active cpu cores there are at your disposal
 }
 var
-  PA,SA: DWORD_PTR;
+    PA,SA: DWORD_PTR;
 begin
-  if _CPUCOUNT=0 then
+
+{$ifdef NOTMULTITHREADED}
+  result:=1;
+  exit;
+{$endif}
+
+  {$IFDEF windows}
+  //get the cpu and system affinity mask, only processmask is used
+  GetProcessAffinityMask(getcurrentprocess,PA,SA);
+
+  result:=getbitcount(pa);
+  //in the future make use of getlogicalprocessorinformation
+
+  if result=0 then result:=1;
+  {$else}
+  result:=cpucount;
+
+  if result=1 then
   begin
+    //doubt!
+  {$ifdef darwin}
+    exit(macport.getCPUCount);
+  {$endif}
 
-    {$IFDEF windows}
-    //get the cpu and system affinity mask, only processmask is used
-    GetProcessAffinityMask(getcurrentprocess,PA,SA);
-
-    _CPUCOUNT:=getbitcount(pa);
-    //in the future make use of getlogicalprocessorinformation
-
-    if _CPUCOUNT=0 then _CPUCOUNT:=1;
-    {$else}
-    _CPUCOUNT:=cpucount;
-
-    if result=1 then
-    begin
-      //doubt!
-    {$ifdef darwin}
-      _CPUCOUNT:=macport.getCPUCount;
-    {$endif}
-
-    end;
-    {$ENDIF}
   end;
-
-  exit(_CPUCOUNT);
+  {$ENDIF}
 end;
 
 
@@ -3046,13 +2977,13 @@ begin
     reg:=tregistry.create;
     try
       Reg.RootKey := HKEY_CURRENT_USER;
-      if Reg.OpenKey('\Software\'+strCheatEngine,false) then
+      if Reg.OpenKey('\Software\Cheat Engine',false) then
       begin
         if reg.valueexists('Save window positions') then
           if reg.readbool('Save window positions') = false then exit;
       end;
 
-      if Reg.OpenKey('\Software\'+strCheatEngine+'\Window Positions '+inttostr(screen.PixelsPerInch),false) or Reg.OpenKey('\Software\'+strCheatEngine+'\Window Positions',false) then
+      if Reg.OpenKey('\Software\Cheat Engine\Window Positions '+inttostr(screen.PixelsPerInch),false) or Reg.OpenKey('\Software\Cheat Engine\Window Positions',false) then
       begin
         s:=form.Name;
         s:=s+rsPosition;
@@ -3137,7 +3068,7 @@ begin
       Reg.RootKey := HKEY_CURRENT_USER;
 
       //make sure the option to save is enabled
-      if Reg.OpenKey('\Software\'+strCheatEngine,false) then
+      if Reg.OpenKey('\Software\Cheat Engine',false) then
       begin
         if reg.valueexists('Save window positions') then
           if reg.readbool('Save window positions') = false then
@@ -3159,7 +3090,7 @@ begin
       end;
 
 
-      if Reg.OpenKey('\Software\'+strCheatEngine+'\Window Positions '+inttostr(screen.PixelsPerInch),true) then
+      if Reg.OpenKey('\Software\Cheat Engine\Window Positions '+inttostr(screen.PixelsPerInch),true) then
       begin
         //registry is open, gather data
         buf:=tmemorystream.Create;
@@ -3621,29 +3552,6 @@ begin
   result:=s1;
 end;
 
-function getthreadCount(pid: qword): integer;
-var
-  ths: THandle;
-  c: integer;
-  te: TThreadEntry32;
-begin
-  result:=0;
-  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, pid);
-
-  te.dwsize:=sizeof(te);;
-  if Thread32First(ths, te) then repeat
-    if te.th32OwnerProcessID=pid then inc(result);
-  until Thread32Next(ths,te)=false;
-
-  closehandle(ths);
-end;
-
-var
-  StackStartCachePID: dword;
-  StackStartCache: tmap;
-  StackStartCacheCS: TCriticalSection;
-  StackStartCacheKernel32Address: ptruint;
-
 function GetStackStart(threadnr: integer=0): ptruint;
 {$IFDEF windows}
 var
@@ -3668,20 +3576,6 @@ var
 {$ENDIF}
 //gets the stack base of the main thread, then checks where the "exitThread" entry is located and uses that -pointersize as the stackbase
 begin
-
-  StackStartCacheCS.enter;
-  try
-    if StackStartCachePID<>processid then
-      StackStartCache.Clear //different pid, clear the old cache
-    else
-      if StackStartCache.GetData(threadnr,result) then exit;
-  finally
-    StackStartCacheCS.leave;
-  end;
-
-  //still here, so not cached
-
-
   result:=0;
 
   {$IFDEF windows}
@@ -3696,7 +3590,7 @@ begin
 
 
 
-  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,processid);
+  ths:=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
   if ths<>INVALID_HANDLE_VALUE then
   begin
     zeromemory(@te32,sizeof(te32));
@@ -3787,19 +3681,6 @@ begin
   end;
   {$ENDIF}
 
-  if result<>0 then
-  begin
-    StackStartCacheCS.enter;
-    try
-      if StackStartCache.HasId(threadnr)=false then
-        StackStartCache.Add(threadnr, result);
-
-      StackStartCachePID:=processid;
-    finally
-      StackStartCacheCS.leave;
-    end;
-  end;
-
 end;
 
 function getDiskFreeFromPath(path: string): int64;
@@ -3858,10 +3739,10 @@ begin
       path:=GetTempDir;
   end;
 
-  path:=path+strCheatEngine+' Symbols';
+  path:=path+'Cheat Engine Symbols';
 
   ForceDirectory(path);
-  if warn and (messagedlg(rsThisCanTakeSomeTime, mtWarning, [mbyes, mbno], 0, mbno)<>mryes) then exit;
+  if warn and (messagedlg('This can take some time if you are missing the PDB''s and CE will look frozen. Are you sure?', mtWarning, [mbyes,mbno],0,mbno)<>mryes) then exit;
 
   getmem(shortpath,256);
   GetShortPathName(pchar(path),shortpath,255);
@@ -3880,99 +3761,7 @@ begin
 
 end;
 
-function relaunchAsAdmin(params: widestring): boolean;
-var wd: widestring;
-  path: widestring;
-begin
-
-  {$ifdef windows}
-  wd:=GetCurrentDir;
-  path:= Application.ExeName;
-  result:=ShellExecute(0,'runas',pwidechar(path),pwidechar(params),pwidechar(wd),SW_SHOW)<>5;
-  {$endif}
-end;
-
-type
-  TRequireAdminDialog=class
-  private
-  public
-    feature: string;
-    result: boolean;
-    procedure showDialog;
-  end;
-
-procedure TRequireAdminDialog.showDialog;
-var i: integer;
-begin
-  result:=false;
-  {$ifdef windows}
-  for i:=1 to ParamCount do
-    if ParamStr(i)='relaunchAsAdmin' then exit; //weird, but should prevent infinite loops in case this happens
-
-  if askAboutRunningAsAdmin then
-  begin
-    if feature<>'' then
-    begin
-      if MessageDlg(format(rsAskToRestartForAdmin, [feature]), mtConfirmation, [mbYes, mbNo], 0)<>mryes then exit;
-    end
-    else
-    begin
-      if MessageDlg(format(rsAskToRestartForAdmin, ['This function']), mtConfirmation, [mbYes, mbNo], 0)<>mryes then exit;
-    end;
-  end;
-
-
-  result:=relaunchAsAdmin('relaunchAsAdmin');
-  if result then
-  begin
-    if askAboutRunningAsAdmin=false then
-    begin
-      application.Terminate; //old one can be canceled
-      ExitProcess(0);
-    end;
-
-  end;
-  {$endif}
-end;
-
-function requiresAdmin(featurename: string=''): boolean;
-var d: TRequireAdminDialog;
-begin
-  result:=runningAsAdmin;
-
-  if not result then
-  begin
-    d:=TRequireAdminDialog.Create;
-    d.feature:=featurename;
-    if MainThreadID=GetCurrentThreadId then
-      d.showDialog
-    else
-      tthread.Synchronize(nil, d.showDialog);
-
-    d.free;
-  end;
-end;
-
-var r: TCPUIDResult;
-  h: thandle;
-
 initialization
-  StackStartCache:=tmap.Create(itu4,sizeof(ptruint));
-  StackStartCachePID:=0;
-  StackStartCacheCS:=TCriticalSection.Create;
-
-  askAboutRunningAsAdmin:=false;
-  {$ifdef windows}
-  runningAsAdmin:=IsWindowsAdmin;
-  if runningAsAdmin then
-  begin
-    h:=OpenSCManager(nil,nil,GENERIC_READ or GENERIC_WRITE);
-    if h=0 then
-      runningAsAdmin:=false
-    else
-      CloseServiceHandle(h);
-  end;
-  {$endif}
 
   if not assigned(OpenProcess) then
   begin
@@ -4010,13 +3799,6 @@ initialization
 
   {$IFDEF windows}
   GetSystemInfo(@systeminfo);
-
-  r:=CPUID(0);
-  systemSupportsIntelPT:=((r.ebx=1970169159) and (r.ecx=1818588270) and (r.edx=1231384169)) and //intel
-   ((CPUID(7,0).ebx shr 25) and 1=1) and //has IPT
-   ((CPUID($14,0).ebx and 1)=1); //can select process
-
-
   {$ENDIF}
 
   username:=GetUserNameFromPID(GetCurrentProcessId);

@@ -1,6 +1,6 @@
 /* vmm.c: This is the virtual machine
  * It will be loaded at virtual address 0x00400000 (vmma.asm that is which just jumps short to intialize paging)
- * On initialization 0 to 4MB is identity mapped, to the stored memory regions are available to mess with
+ * On initialisation 0 to 4MB is identity mapped, to the stored memory regions are available to mess with
  */
 
 
@@ -47,7 +47,7 @@
 
 
 
-
+void menu(void);
 void menu2(void);
 
 
@@ -68,7 +68,6 @@ int cpu_type;
 int cpu_ext_modelID;
 int cpu_ext_familyID;
 
-int debugtestvar=0x12345678;
 
 
 unsigned long long IA32_APIC_BASE=0xfee00000;
@@ -146,13 +145,8 @@ void CheckCRCValues(void)
 void vmm_entry2_hlt(pcpuinfo currentcpuinfo)
 {
   UINT64 a,b,c,d;
-
-  nosendchar[getAPICID()]=0;
-
   if (currentcpuinfo)
     sendstringf("CPU %d : Terminating...\n\r",currentcpuinfo->cpunr);
-  else
-    sendstringf("Unknown(%d) terminating...", getcpunr() );
 
   while (1)
   {
@@ -264,7 +258,10 @@ void vmm_entry2(void)
 
   startvmx(cpuinfo);
 
-  nosendchar[getAPICID()]=0;
+   // while (1); //debug
+
+
+
   sendstringf("Application cpu returned from startvmx\n\r");
 
   vmm_entry2_hlt(cpuinfo);
@@ -289,8 +286,6 @@ void vmm_entry(void)
   if (isAP)
   {
     vmm_entry2();
-
-    nosendchar[getAPICID()]=0;
     sendstringf("vmm_entry2 has PHAILED!!!!");
     while (1) outportb(0x80,0xc7);
   }
@@ -308,7 +303,6 @@ void vmm_entry(void)
 
   Password1=0x76543210; //later to be filled in by user, sector on disk, or at compile time
   Password2=0xfedcba98;
-  Password3=0x90909090;
 
   /*version 1 was the 32-bit only version,
    * 2 added 64-bit,
@@ -325,10 +319,8 @@ void vmm_entry(void)
    * 12=vpid
    * 13=basic TSC emulation
    * 14=properly emulate debug step
-   * 15=some amd fixes/contiguous memory param/dbvmbp
-   * 16=3th vmcall password
    */
-  dbvmversion=16;
+  dbvmversion=14;
   int1redirection=1; //redirect to int vector 1 (might change this to the perfcounter interrupt in the future so I don't have to deal with interrupt prologue/epilogue)
   int3redirection=3;
   int14redirection=14;
@@ -346,9 +338,9 @@ void vmm_entry(void)
   MAXPHYADDRMASK=~(MAXPHYADDRMASK << MAXPHYADDR); //<< 36 = 0xfffffff000000000 .  after inverse : 0x0000000fffffffff
   MAXPHYADDRMASKPB=MAXPHYADDRMASK & 0xfffffffffffff000ULL; //0x0000000ffffff000
 
-  sendstringf("MAXPHYADDR=%d\n", MAXPHYADDR);
-  sendstringf("MAXPHYADDRMASK=%6\n", MAXPHYADDRMASK);
-  sendstringf("MAXPHYADDRMASKPB=%6\n", MAXPHYADDRMASKPB);
+  sendstringf("MAXPHYADDR=%d", MAXPHYADDR);
+  sendstringf("MAXPHYADDRMASK=%6", MAXPHYADDRMASK);
+  sendstringf("MAXPHYADDRMASKPB=%6", MAXPHYADDRMASK);
 
 
 
@@ -428,7 +420,6 @@ void vmm_entry(void)
 
 
 
-
   displayline("IA32_APIC_BASE=%6\n\r",IA32_APIC_BASE);
   sendstringf("IA32_APIC_BASE=%6\n\r",IA32_APIC_BASE);
   sendstringf("\tLocal APIC base=%6\n\r",IA32_APIC_BASE & 0xfffff000);
@@ -487,7 +478,6 @@ void vmm_entry(void)
       sendstringf("original->cpucount=%d\n", original->cpucount);
       if (original->cpucount>1000)
       {
-        nosendchar[getAPICID()]=0;
         sendstringf("More than 1000 cpu\'s are currently not supported\n");
         ddDrawRectangle(0,DDVerticalResolution-100,100,100,0xff0000);
         while (1);
@@ -626,7 +616,6 @@ void vmm_entry(void)
 
   if (GDT_BASE==NULL)
   {
-    nosendchar[getAPICID()]=0;
     sendstring("Memory allocation failed\n");
     ddDrawRectangle(0,DDVerticalResolution-100,100,100,0xff0000);
     while (1) outportb(0x80,0xc8);
@@ -688,45 +677,13 @@ BPTest:
   asm volatile ("": : :"memory");
 AfterBPTest:
   if (i==0)
-    sendstringf("BPTest success.  dr6=%6\n", getDR6());
+    sendstring("BPTest successfull\n");
   else
     sendstring(":(\n");
 
   cpuinfo->OnInterrupt.RSP=0;
   cpuinfo->OnInterrupt.RBP=0;
   cpuinfo->OnInterrupt.RIP=0;
-
-  try
-  {
-    sendstring("Trying memory access BP\n");
-
-    regDR7 dr7;
-    dr7.DR7=getDR7();
-
-    dr7.L1=1;
-    dr7.G1=1;
-    dr7.RW1=3;
-    dr7.LEN1=3;
-
-    setDR7(dr7.DR7);
-    setDR1((QWORD)((volatile void *)&debugtestvar));
-
-    setDR6(0xffffffff);
-    sendstringf("Before access DR6=%6\n",getDR6());
-    asm volatile ("": : :"memory");
-    debugtestvar=0;
-    debugtestvar=890;
-    asm volatile ("": : :"memory");
-
-    sendstringf("Memory access BP failure\n DR1=%6 DR7=%6", getDR1(), getDR7());
-
-  }
-  except
-  {
-    sendstringf("Except block success.  dr6=%6\n", getDR6());
-  }
-  tryend
-
 
 
 
@@ -1038,8 +995,6 @@ AfterBPTest:
 
   InitExports();
 
-  setDR6(0xffff0ff0);
-
   //outportb(0x80,0x10);
 
   menu2();
@@ -1222,7 +1177,6 @@ void menu2(void)
     displayline("v: control register test\n");
     displayline("e: efer test\n");
     displayline("o: out of memory test\n");
-    displayline("n: NMI Test\n");
 
     if (getDBVMVersion())
     {
@@ -1237,7 +1191,6 @@ void menu2(void)
     key=0;
     while (!key)
     {
-
       if ((!loadedOS) || (showfirstmenu))
       {
 #ifdef DELAYEDSERIAL
@@ -1322,8 +1275,6 @@ void menu2(void)
             UINT64 rflags;
             pcpuinfo i=getcpuinfo();
 
-            ClearDR6OnInterrupt=1;
-
 
 
             try
@@ -1382,10 +1333,10 @@ void menu2(void)
             i->OnInterrupt.RBP=getRBP();
             i->OnInterrupt.RIP=(QWORD)((volatile void *)&&afterGDtest);
             asm volatile ("": : :"memory");
-            setDR6(0xffffffff);
+            setDR6(0xfffffff0);
             setDR7(getDR7() | (1<<13));
             asm volatile ("": : :"memory");
-            setDR3(0x12345678);
+            setDR6(0xffff0ff0);
 
             sendstringf("Failure to break on GD");
 
@@ -1393,7 +1344,6 @@ void menu2(void)
 afterGDtest:
 
             //RF
-            sendstringf("After GD test. DR6=%6\n", getDR6());
 
 
             displayline("Setting an execute breakpoint\n\r");
@@ -1431,14 +1381,11 @@ afterWRBPtest:
             displayline("done writing\n");
 
 
-            displayline("Setting the single step flag (this will give unhandled exceptions)\n\r");
+            displayline("Setting the single step flag (this will give exceptions)\n\r");
             rflags=getRFLAGS(); //NO RF
             setRFLAGS(rflags | (1<<8));
 
             setRFLAGS(rflags & (~(1<<8))); //unset
-
-            ClearDR6OnInterrupt=0;
-
 
             break;
           }
@@ -1666,8 +1613,6 @@ afterWRBPtest:
           }
 
 
-
-
           default:
             key=0;
             break;
@@ -1747,7 +1692,6 @@ void menu(void)
 #endif
     sendstring("Your command:");
 
-
 #ifndef DEBUG
     if (autostart || loadedOS)
     {
@@ -1767,8 +1711,8 @@ void menu(void)
 #endif
       if (loadedOS)
       {
-        command='0';
-//        command=waitforchar();
+//        command='0';
+        command=waitforchar();
 
       }
       else
@@ -2022,19 +1966,6 @@ void menu(void)
           break;
         }
 
-        case 'z':
-        {
-          QWORD old=getCR4();
-          sendstringf("testing cr4 value\n");
-          setCR4(0x370678);
-          sendstringf("pass 1 %8\n", getCR4());
-          setCR4(0x372678);
-          sendstringf("pass 2 %8\n", getCR4());
-          setCR4(old);
-          sendstringf("done\n");
-          break;
-        }
-
        /*
       case  'i':
         showstate();
@@ -2223,10 +2154,12 @@ void startvmx(pcpuinfo currentcpuinfo)
             clearScreen();*/
 
 
+
+
+
           launchVMX(currentcpuinfo);
 
-          nosendchar[getAPICID()]=0;
-          sendstring("launchVMX returned. Meh\n");
+          sendstring("launchVMX returned\n");
           while (1) outportb(0x80,0xc9);
 
 
@@ -2316,7 +2249,6 @@ void startvmx(pcpuinfo currentcpuinfo)
 
         if (currentcpuinfo->vmxon_region==NULL)
         {
-          nosendchar[getAPICID()]=0;
           sendstringf(">>>>>>>>>>>>>>>>>>>>vmxon allocation has failed<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
           ddDrawRectangle(0,DDVerticalResolution-100,100,100,0xff0000);
           while (1) outportb(0x80,0xca);
@@ -2332,7 +2264,6 @@ void startvmx(pcpuinfo currentcpuinfo)
 
         if (currentcpuinfo->vmcs_region==NULL)
         {
-          nosendchar[getAPICID()]=0;
           ddDrawRectangle(0,DDVerticalResolution-100,100,100,0xff0000);
           sendstringf(">>>>>>>>>>>>>>>>>>>>vmcs_region allocation has failed<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
           while (1) outportb(0x80,0xcb);

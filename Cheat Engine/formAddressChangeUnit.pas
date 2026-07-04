@@ -18,7 +18,7 @@ uses
   Buttons, Arrow, Spin, Menus, CEFuncProc, NewKernelHandler, symbolhandler,
   memoryrecordunit, types, byteinterpreter, math, CustomTypeHandler,
   commonTypeDefs, lua, lualib, lauxlib, luahandler{$ifdef windows}, CommCtrl{$endif}, LuaClass, Clipbrd,
-  DPIHelper, betterControls;
+  DPIHelper;
 
 const WM_disablePointer=WM_USER+1;
 
@@ -149,8 +149,6 @@ type
     LabelType: TLabel;
     LabelDescription: TLabel;
     lblValue: TLabel;
-    miCopyFinalAddressToClipboard: TMenuItem;
-    miCopyValueToClipboard: TMenuItem;
     miAddOffsetAbove: TMenuItem;
     miAddOffsetBelow: TMenuItem;
     miRemoveOffset: TMenuItem;
@@ -185,7 +183,6 @@ type
     lengthlabel: TLabel;
     pnlExtra: TPanel;
     pmOffset: TPopupMenu;
-    pmValue: TPopupMenu;
     RadioButton1: TRadioButton;
     RadioButton2: TRadioButton;
     RadioButton3: TRadioButton;
@@ -209,8 +206,6 @@ type
     procedure FormDestroy(Sender: TObject);
     procedure FormResize(Sender: TObject);
     procedure FormShow(Sender: TObject);
-    procedure miCopyFinalAddressToClipboardClick(Sender: TObject);
-    procedure miCopyValueToClipboardClick(Sender: TObject);
     procedure miAddAddressToListClick(Sender: TObject);
     procedure miCopyAddressToClipboardClick(Sender: TObject);
     procedure miAddOffsetAboveClick(Sender: TObject);
@@ -222,7 +217,6 @@ type
     procedure miUpdateAfterIntervalClick(Sender: TObject);
     procedure miUpdateOnReinterpretOnlyClick(Sender: TObject);
     procedure pmOffsetPopup(Sender: TObject);
-    procedure pnlExtraResize(Sender: TObject);
     procedure Timer1Timer(Sender: TObject);
     procedure Timer2Timer(Sender: TObject);
   private
@@ -230,8 +224,6 @@ type
     pointerinfo: TPointerInfo;
     fMemoryRecord: TMemoryRecord;
     delayedpointerresize: boolean;
-    shown: boolean;
-    loadedWidth: boolean;
     procedure offsetKeyPress(sender: TObject; var key:char);
     procedure processaddress;
     procedure ApplyMemoryRecord;
@@ -258,7 +250,6 @@ type
     { Public declarations }
     index: integer;
     index2: integer;
-    focusDescription: boolean;
     property memoryrecord: TMemoryRecord read fMemoryRecord write setMemoryRecord;
     property vartype: TVariableType read getVartype write setVartype;
     property length: integer read gLength write sLength;
@@ -514,7 +505,7 @@ begin
     if fInvalidOffset then
       edtOffset.Font.Color:=clRed
     else
-      edtOffset.Font.Color:=clWindowtext;
+      edtOffset.Font.Color:=clDefault;
   end;
 end;
 
@@ -625,10 +616,7 @@ begin
   lblPointerAddressToValue.Caption:=' ';
   lblPointerAddressToValue.popupmenu:=parentPointer.owner.pmPointerRow;
   lblPointerAddressToValue.Tag:=ptruint(self);
-  if ShouldAppsUseDarkMode() then
-    lblPointerAddressToValue.Font.Color:=$ff7f00 //inccolor(clBlue,32)
-  else
-    lblPointerAddressToValue.Font.Color:=clBlue;
+  lblPointerAddressToValue.Font.Color:=clBlue;
   lblPointerAddressToValue.Font.Underline:=true;
 
   //an offset editbox
@@ -807,18 +795,13 @@ end;
 procedure TPointerInfo.basechange(sender: Tobject);
 var e: boolean;
 begin
-
-  if (owner.memoryrecord<>nil) then
-    e:=not owner.memoryrecord.parseAddressString(utf8toansi(baseAddress.text),fBaseAddress)
-  else
-    fBaseAddress:=symhandler.getAddressFromName(utf8toansi(baseAddress.text),false,e);
-
+  fBaseAddress:=symhandler.getAddressFromName(utf8toansi(baseAddress.text), false, e);
   fInvalidBaseAddress:=e;
 
   if fInvalidBaseAddress then
     baseAddress.Font.Color:=clRed
   else
-    baseAddress.Font.Color:=clWindowtext;
+    baseAddress.Font.Color:=clDefault;
 
   processAddress;
 end;
@@ -1073,8 +1056,6 @@ begin
   baseAddress.Text:=owner.editAddress.Text;
   baseAddress.OnChange:=basechange;
 //  baseAddress.OnResize:=baseaddressresize;;
-
-
 
 
   baseValue:=tlabel.create(self);
@@ -1342,10 +1323,7 @@ var
 begin
   //read the address and display the value it points to
 
-  if (memoryrecord<>nil) then
-    e:=not memoryrecord.parseAddressString(utf8toansi(editAddress.Text),a)
-  else
-    a:=symhandler.getAddressFromName(utf8toansi(editAddress.Text),false,e);
+  a:=symhandler.getAddressFromName(utf8toansi(editAddress.Text),false,e);
 
   if (not e) and (cbvarType.ItemIndex<>-1) then
   begin
@@ -1395,8 +1373,8 @@ begin
   cbunicode.visible:=cbvarType.itemindex = 7;
   cbCodePage.visible:=cbunicode.Visible;
 
-  cbHex.Enabled:=not (cbvarType.itemindex in [0,7]);
-  cbSigned.Enabled:=not (cbvarType.itemindex in [0,5,6,7,8]);
+  cbHex.Enabled:=not (cbvarType.itemindex in [0,7,8]);
+  cbSigned.Enabled:=cbHex.Enabled;
 
   AdjustHeight;
 
@@ -1442,9 +1420,6 @@ end;
 procedure TformAddressChange.DelayedResize;
 begin
   AdjustHeight;
-
-  clientwidth:=clientwidth+1; //force an update
-  clientwidth:=clientwidth-1;
 end;
 
 procedure TformAddressChange.PointerInfoResize(sender: TObject);
@@ -1479,17 +1454,11 @@ begin
       pointerinfo.Anchors:=[akLeft,akTop, akRight];
 
       pointerinfo.OnResize:=PointerInfoResize;
-
-      pointerinfo.baseAddress.OnChange(pointerinfo.baseAddress);
-
     end;
 
     //editAddress.enabled:=false;
     editAddress.ReadOnly:=true;
-    if ShouldAppsUseDarkMode() then
-      editAddress.Color:=$505050
-    else
-      editAddress.Color:=clInactiveBorder;
+    editAddress.Color:=clInactiveBorder;
 
     btnOk.AnchorSideTop.Control:=pointerinfo;
     btnCancel.AnchorSideTop.Control:=pointerinfo;
@@ -1512,7 +1481,7 @@ begin
 
     //editAddress.enabled:=true;
     editAddress.ReadOnly:=false;
-    editAddress.Color:=clWindow;
+    editAddress.Color:=clDefault;
 
     if pointerinfo<>nil then
       freeandnil(pointerinfo);
@@ -1531,7 +1500,6 @@ begin
   constraints.MinHeight:=btncancel.top+btnCancel.height+6;
   constraints.MaxHeight:=btncancel.top+btnCancel.height+6;
   clientheight:=btncancel.top+btnCancel.height+6;
- // clientwidth:=
 end;
 
 procedure TFormAddressChange.ApplyMemoryRecord;
@@ -1579,7 +1547,6 @@ begin
      or (fMemoryRecord.vartype = vtQword)
      or (fMemoryRecord.vartype = vtSingle)
      or (fMemoryRecord.vartype = vtDouble)
-     or (fMemoryRecord.vartype = vtByteArray)
      then
   begin
     cbHex.checked:=fMemoryRecord.ShowAsHex;
@@ -1702,15 +1669,13 @@ begin
 
   if LoadFormPosition(self) then
   begin
-    loadedWidth:=true;
     autosize:=false;
   end;
 end;
 
 procedure TformAddressChange.FormDestroy(Sender: TObject);
 begin
-  if shown then
-    SaveFormPosition(Self);
+  SaveFormPosition(Self);
 
   if pointerinfo<>nil then
     freeandnil(pointerinfo);
@@ -1794,13 +1759,7 @@ begin
   if autosize=false then //form position got loaded
     OnResize(self);
 
-  if autosize then
-  begin
-    autosize:=false;
-    autosize:=true;
-    autosize:=false;
-  end;
-
+  autosize:=false;
 
   if fMemoryRecord<>nil then
     ApplyMemoryRecord;
@@ -1809,45 +1768,7 @@ begin
   AdjustHeight;
   Repaint;
 
-  shown:=true;
-
-  HexAndSignedPanel.AutoSize:=false;
-  HexAndSignedPanel.AutoSize:=true;
-  if loadedWidth=false then
-  begin
-    //get the best width
-    w:=max(cbvarType.left*2+cbvarType.width,pnlExtra.left*2+pnlExtra.width);
-    w:=max(w,width);
-    w:=max(w,HexAndSignedPanel.left*2+HexAndSignedPanel.width);
-    w:=max(w,HexAndSignedPanel.left*2+cbSigned.Left+cbSigned.width+8);
-    clientwidth:=w+BorderWidth*3;
-
-    loadedWidth:=true;
-  end;
-
-  if focusDescription then
-    editDescription.SetFocus;
-
-
-   //autosize:=true;
-end;
-
-procedure TformAddressChange.miCopyFinalAddressToClipboardClick(Sender: TObject);
-var e: boolean;
-    a: ptruint;
-begin
-  if (memoryrecord<>nil) then
-    e:=not memoryrecord.parseAddressString(utf8toansi(editAddress.Text),a)
-  else
-    a:=symhandler.getAddressFromName(utf8toansi(editAddress.Text),false,e);
-
-  if not e then
-    Clipboard.AsText:=inttohex(a,8);
-end;
-
-procedure TformAddressChange.miCopyValueToClipboardClick(Sender: TObject);
-begin
-  Clipboard.AsText:=copy(lblValue.Caption,2);
+  //autosize:=true;
 end;
 
 procedure TformAddressChange.miAddAddressToListClick(Sender: TObject);
@@ -2071,13 +1992,6 @@ begin
     miCopy.enabled:=miCut.enabled;
     miPaste.enabled:=Clipboard.AsText<>'';
 
-  end;
-end;
-
-procedure TformAddressChange.pnlExtraResize(Sender: TObject);
-begin
-  asm
-  nop
   end;
 end;
 

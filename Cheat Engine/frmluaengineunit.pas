@@ -16,7 +16,7 @@ uses
   lauxlib, lualib, LuaSyntax, luahandler, CEFuncProc, sqldb, strutils,
   InterfaceBase, ComCtrls, SynGutterBase, SynEditMarks, PopupNotifier, ActnList,
   SynEditHighlighter, AvgLvlTree, math, LazFileUtils, Types, LCLType,
-  pluginexports, SynEditKeyCmds, betterControls;
+  pluginexports, SynEditKeyCmds;
 
 type
 
@@ -147,7 +147,7 @@ implementation
 { TfrmLuaEngine }
 
 uses LuaClass, SynPluginMultiCaret, SynEditTypes, globals, DPIHelper, frmSyntaxHighlighterEditor,
-  frmautoinjectunit, mainunit2, TypInfo;
+  frmautoinjectunit;
 
 resourcestring
   rsError = 'Script Error';
@@ -243,7 +243,7 @@ var
 
   r: string;
 begin
-  identchars:=['.','a'..'z','A'..'Z','0'..'9','_','[',']'];
+  identchars:=['.','a'..'z','A'..'Z','0'..'9','_'];
 
   extra:='';
   if s='' then exit('');
@@ -287,8 +287,6 @@ var
   c: TComponent absolute o;
 
   f: boolean;
-
-  pp: pproplist;
 begin
 
   scLuaCompleter.ItemList.Clear;
@@ -328,9 +326,7 @@ begin
           methods.CaseSensitive:=false;
 
           case lua_type(L, -1) of
-
-
-            LUA_TUSERDATA:
+            LUA_TUSERDATA,LUA_TLIGHTUSERDATA:
             begin
               o:=lua_ToCEUserData(L, -1);
 
@@ -386,15 +382,11 @@ begin
                     properties.Add(c.Components[i].Name);
                 end;
 
-              pp:=nil;
-              i:=GetPropList(c, pp);
-              if i>0 then
-                for j:=0 to i-1 do
-                  properties.Add(pp^[j].Name);
+              temp:=ce_getPropertylist(o);
+              if temp<>nil then
+                properties.AddStrings(temp);
 
-              if pp<>nil then
-                freememandnil(pp);
-
+              temp.free;
             end;
 
             LUA_TTABLE:
@@ -410,38 +402,31 @@ begin
                 if lua_type(L,-2)=LUA_TSTRING then
                 begin
                   s:=Lua_ToString(L,-2);
-                  if length(s)>1 then
-                  begin
-                    if lua_isfunction(L,-1) then
-                    begin
-                      if lua_iscfunction(L,-1) then  //should be the case, but some people don't use the designated functions
-                      begin
-                        s2:=s;
-                        s2[1]:=lowercase(s2[1]);
-                        if s2[1]<>s[1] then
-                        begin
-                          //check if it does have a duplicate
-                          lua_pushstring(L,s2);
-                          lua_gettable(L,i);
-                          if lua_isnil(L,-1)=false then //has duplicate
-                            s[1]:=lowercase(s[1]);
 
-                          lua_pop(L,1);
-                        end;
+                  if lua_isfunction(L,-1) then
+                  begin
+                    if lua_iscfunction(L,-1) then  //should be the case, but some people don't use the designated functions
+                    begin
+                      s2:=s;
+                      s2[1]:=lowercase(s2[1]);
+                      if s2[1]<>s[1] then
+                      begin
+                        //check if it does have a duplicate
+                        lua_pushstring(L,s2);
+                        lua_gettable(L,i);
+                        if lua_isnil(L,-1)=false then //has duplicate
+                          s[1]:=lowercase(s[1]);
+
+                        lua_pop(L,1);
                       end;
                     end;
-
-                    properties.Add(s);
                   end;
+
+                  properties.Add(s);
                 end;
 
                 lua_pop(L,1);
               end;
-            end;
-
-            else
-            begin
-              outputdebugstring(pchar('unknown lua type: '+inttostr(lua_type(L, -1))));
             end;
 
           end;
@@ -466,8 +451,8 @@ begin
 
     scLuaCompleter.CurrentString:=extra;
   except
-    //on e:exception do
-   //   messagedlg(e.message,mtError,[mbok],0);
+    on e:exception do
+      messagedlg(e.message,mtError,[mbok],0);
   end;
 end;
 
@@ -617,13 +602,6 @@ begin
     begin
       if (name=token) then
       begin
-        if lua_isnil(Luavm,-1) then
-        begin
-          lua_pop(LuaVM,1);
-          inc(i);
-          continue;
-        end;
-
         result:=true;
         break;   //leave the value on the stack
       end
@@ -916,6 +894,10 @@ begin
         exit;
       end;
 
+
+
+
+
       if hintwindow=nil then
         hintwindow:=THintWindow.Create(self);
 
@@ -993,134 +975,131 @@ begin
   end;
 
 
-  try
-    if lua_getinfo(L,'nSl', ar)<>0 then
+
+  if lua_getinfo(L,'nSl', ar)<>0 then
+  begin
+    if LuaDebugSource=nil then
+      LuaDebugSource:=ar.source;
+
+    if (ar.source=LuaDebugSource) and (hasLuaBreakpoint(ar.currentline)) then
     begin
-      if LuaDebugSource=nil then
-        LuaDebugSource:=ar.source;
+      //break
+     // frmLuaEngine.visible:=false;
+     // frmLuaEngine.ShowModal;
+     // frmLuaEngine.show;
 
-      if (ar.source=LuaDebugSource) and (hasLuaBreakpoint(ar.currentline)) then
+      LuaDebugForm.show;
+      LuaDebugForm.SetFocus;
+
+
+      if LuaDebugForm.mScript.Marks.Line[ar.currentline]<>nil then
       begin
-        //break
-       // frmLuaEngine.visible:=false;
-       // frmLuaEngine.ShowModal;
-       // frmLuaEngine.show;
+        //update the icon for the current line
+        if LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex = 0 then
+          LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex:=2;
+      end
+      else
+      begin
+        mark:=TSynEditMark.Create(LuaDebugForm.mscript);
+        mark.line:=ar.currentline;
+        mark.ImageList:=LuaDebugForm.ilSyneditDebug;
+        mark.ImageIndex:=1;
+        mark.Visible:=true;
+        LuaDebugForm.mscript.Marks.Add(mark);
+      end;
 
-        LuaDebugForm.show;
-        LuaDebugForm.SetFocus;
 
 
-        if LuaDebugForm.mScript.Marks.Line[ar.currentline]<>nil then
+      LuaDebugForm.show;
+      //activate the debug gui
+      LuaDebugForm.tbDebug.Visible:=true;
+      LuaDebugForm.tbDebug.enabled:=true;
+      LuaDebugForm.tbRun.enabled:=true;
+      LuaDebugForm.tbSingleStep.enabled:=true;
+      LuaDebugForm.tbStopDebug.enabled:=true;
+      LuaDebugForm.mScript.ReadOnly:=true;
+
+
+      LuaDebugForm.mScript.CaretY:=ar.currentline;
+      LuaDebugForm.mScript.EnsureCursorPosVisible;
+
+      LuaDebugForm.continuemethod:=0;
+
+      LuaDebugInfo:=ar;
+      LuaDebugVariables:=TStringToStringTree.Create(true);
+
+      i:=1;
+
+      repeat
+        name:=lua_getlocal(L, ar, i);
+        if name<>nil then
         begin
-          //update the icon for the current line
-          if LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex = 0 then
-            LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex:=2;
-        end
-        else
-        begin
-          mark:=TSynEditMark.Create(LuaDebugForm.mscript);
-          mark.line:=ar.currentline;
-          mark.ImageList:=LuaDebugForm.ilSyneditDebug;
-          mark.ImageIndex:=1;
-          mark.Visible:=true;
-          LuaDebugForm.mscript.Marks.Add(mark);
-        end;
-
-
-
-        LuaDebugForm.show;
-        //activate the debug gui
-        LuaDebugForm.tbDebug.Visible:=true;
-        LuaDebugForm.tbDebug.enabled:=true;
-        LuaDebugForm.tbRun.enabled:=true;
-        LuaDebugForm.tbSingleStep.enabled:=true;
-        LuaDebugForm.tbStopDebug.enabled:=true;
-        LuaDebugForm.mScript.ReadOnly:=true;
-
-
-        LuaDebugForm.mScript.CaretY:=ar.currentline;
-        LuaDebugForm.mScript.EnsureCursorPosVisible;
-
-        LuaDebugForm.continuemethod:=0;
-
-        LuaDebugInfo:=ar;
-        LuaDebugVariables:=TStringToStringTree.Create(true);
-
-        i:=1;
-
-        repeat
-          name:=lua_getlocal(L, ar, i);
-          if name<>nil then
+          if copy(name,1,1)<>'(' then  //(*temporary)
           begin
-            if copy(name,1,1)<>'(' then  //(*temporary)
-            begin
-              value:=LuaValueToDescription(L, -1)+' (local)';
-              LuaDebugVariables.Add(name, value);
-            end;
-
-            lua_pop(L, 1);
-            inc(i);
-
+            value:=LuaValueToDescription(L, -1)+' (local)';
+            LuaDebugVariables.Add(name, value);
           end;
 
-        until name=nil;
+          lua_pop(L, 1);
+          inc(i);
 
-
-
-
-        while LuaDebugForm.continuemethod=0 do
-        begin
-          try
-            application.ProcessMessages;
-          except
-            if Application.CaptureExceptions then
-              Application.HandleException(LuaDebugForm)
-            else
-              raise;
-          end;
-
-
-          if application.Terminated or (LuaDebugForm.Visible=false) then break;
-          application.Idle(true);
         end;
 
-        if application.Terminated then
-        begin
-          {$ifdef windows}
-          ExitProcess(UINT(-1)); //there's nothing to return to...
-          {$endif}
-          {$ifdef darwin}
-          KillThread(GetCurrentThreadId);
-          {$endif}
-        end;
-
-        LuaDebugForm.mScript.ReadOnly:=false;
+      until name=nil;
 
 
-        //clear the current instruction pointer
-        if LuaDebugForm.mScript.Marks.Line[ar.currentline]<>nil then
-        begin
-          if LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex = 2 then  //bp with the current bp set
-            LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex:=0  //set back to normal bp
+
+
+      while LuaDebugForm.continuemethod=0 do
+      begin
+        try
+          application.ProcessMessages;
+        except
+          if Application.CaptureExceptions then
+            Application.HandleException(LuaDebugForm)
           else
-            LuaDebugForm.mScript.Marks.Line[ar.currentline][0].Free; //clear bp
-
-
+            raise;
         end;
 
-        LuaDebugSingleStepping:=false;
+
+        if application.Terminated or (LuaDebugForm.Visible=false) then break;
+        application.Idle(true);
+      end;
+
+      if application.Terminated then
+      begin
+        {$ifdef windows}
+        ExitProcess(UINT(-1)); //there's nothing to return to...
+        {$endif}
+        {$ifdef darwin}
+        KillThread(GetCurrentThreadId);
+        {$endif}
+      end;
+
+      LuaDebugForm.mScript.ReadOnly:=false;
 
 
+      //clear the current instruction pointer
+      if LuaDebugForm.mScript.Marks.Line[ar.currentline]<>nil then
+      begin
+        if LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex = 2 then  //bp with the current bp set
+          LuaDebugForm.mScript.Marks.Line[ar.currentline][0].ImageIndex:=0  //set back to normal bp
+        else
+          LuaDebugForm.mScript.Marks.Line[ar.currentline][0].Free; //clear bp
 
 
       end;
-  //    frmLuaEngine.moutput.lines.add('called:'+ar.what+' ('+inttostr(ar.currentline)+')');
+
+      LuaDebugSingleStepping:=false;
+
+
+
 
     end;
-  except
-    on e:exception do //e.g accessing a local variable to a ce object that got freed
-      outputdebugstring(pchar('LineHook_Handler exception:'+e.message));
+//    frmLuaEngine.moutput.lines.add('called:'+ar.what+' ('+inttostr(ar.currentline)+')');
+
   end;
+
 
 end;
 
@@ -1157,10 +1136,7 @@ var pc: pchar;
 begin
   i:=lua_gettop(Luavm);
   if i>0 then
-  begin
     OutputDebugString('luastack is not correct');
-    lua_settop(Luavm,0);
-  end;
 
   dodebug:=false;
 
@@ -1255,7 +1231,40 @@ begin
           end;
 
           templist.free;
+                           {
+          pc:=lua_tolstring(luavm, i,nil);
+          if pc<>nil then
+            mOutput.lines.add(':'+pc)
+          else
+          begin
+            if lua_islightuserdata(luavm,i) then //shouldn't occur anymore
+              moutput.lines.add(':'+p->'+inttohex(ptruint(lua_touserdata(luavm,i)),1))
+            else
+            if lua_isboolean(luavm,i) then
+              moutput.lines.add(':(boolean)'+BoolToStr(lua_toboolean(Luavm, i),'true','false'))
+            else
+            if lua_isnil(luavm,i) then
+              moutput.lines.add(':'+'nil')
+            else
+            if lua_istable(luavm, i) then
+              moutput.lines.add(':'+'table')
+            else
+            if lua_isfunction(luavm,i) then
+              moutput.lines.add(':'+'function')
+            else
+            if lua_isuserdata(luavm,i) then
+            begin
+              try
+                c:=lua_ToCEUserData(luavm, i);
+                moutput.lines.add(':'+'class object ('+c.ClassName+')')
+              except
+                moutput.lines.add(':'+'class object (corrupt)')
+              end;
+            end
+            else
+              moutput.lines.add(':'+'unknown')
 
+          end;}
         end;
 
 
@@ -1270,10 +1279,7 @@ begin
         //is currently shown inside the pcall function
         pc:=lua_tolstring(luavm, -1,nil);
         if pc<>nil then
-        begin
-          mOutput.lines.AddText(rsError+':'+pc)  ;
-          mOutput.VertScrollBar.Position:=mOutput.VertScrollBar.Range;
-        end
+          mOutput.lines.add(rsError+':'+pc)
         else
           moutput.lines.add(rsError+':'+'nil');
       end else moutput.lines.add(rsError);
@@ -1392,16 +1398,6 @@ begin
   multicaret.DefaultMode:=mcmMoveAllCarets;
   multicaret.DefaultColumnSelectMode:=mcmCancelOnCaretMove;
 
-  //set the default colors
-  mscript.Color:=colorset.TextBackground;
-  mscript.Font.color:=colorset.FontColor;
-  mscript.Gutter.Color:=clBtnFace;
-  mscript.Gutter.LineNumberPart.MarkupInfo.Background:=clBtnFace;
-  mscript.Gutter.SeparatorPart.MarkupInfo.Background:=clBtnFace;
-
-  mscript.LineHighlightColor.Background:=ColorToRGB(mscript.Color) xor $212121;
-
-
   fq:=mscript.Font.Quality;
   if not (fq in [fqCleartypeNatural, fqDefault]) then
     mscript.Font.quality:=fqDefault;
@@ -1436,29 +1432,11 @@ begin
   i:=mScript.Keystrokes.FindCommand(ecSelectAll);
   if i<>-1 then mScript.Keystrokes[i].ShortCut:=TextToShortCut('Meta+A');
 
-  i:=mScript.Keystrokes.FindCommand(ecLineStart);
-  if i<>-1 then mScript.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Left');
-
-  i:=mScript.Keystrokes.FindCommand(ecLineEnd);
-  if i<>-1 then mScript.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Right');
-
-  i:=mScript.Keystrokes.FindCommand(ecEditorTop);
-  if i<>-1 then mScript.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Up');
-
-  i:=mScript.Keystrokes.FindCommand(ecEditorBottom);
-  if i<>-1 then mScript.Keystrokes[i].ShortCut:=TextToShortCut('Meta+Down');
-
 
   MenuItem3.ShortCutKey2:=TextToShortCut('Meta+S');
 
-  MenuItem11.ShortCut:=TextToShortCut('Meta+N');
-  MenuItem2.ShortCut:=TextToShortCut('Meta+O');
-  MenuItem3.ShortCut:=TextToShortCut('Meta+S');
-  miSaveCurrentScriptAs.ShortCut:=TextToShortCut('Meta+Alt+S');
 
-
-
-   {$endif}
+  {$endif}
 end;
 
 procedure TfrmLuaEngine.FormDestroy(Sender: TObject);
@@ -1537,7 +1515,7 @@ end;
 
 procedure TfrmLuaEngine.reloadHighlighterSettings;
 begin
-  synhighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
+  synhighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter');
 end;
 
 procedure TfrmLuaEngine.MenuItem15Click(Sender: TObject);
@@ -1545,11 +1523,11 @@ var
   frmHighlighterEditor: TfrmHighlighterEditor;
 begin
   frmHighlighterEditor:=TfrmHighlighterEditor.create(self);
-  synhighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
+  synhighlighter.LoadFromRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter');
   frmHighlighterEditor.highlighter:=synhighlighter;
   if frmHighlighterEditor.showmodal=mrok then
   begin
-    synhighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\'+strCheatEngine+'\Lua Highlighter'+darkmodestring);
+    synhighlighter.SaveToRegistry(HKEY_CURRENT_USER, '\Software\Cheat Engine\Lua Highlighter');
     ReloadAllAutoInjectHighlighters; //AA uses lua too
     ReloadAllLuaEngineHighlighters;
   end;
@@ -1627,7 +1605,7 @@ begin
   if savedialog1.Execute then
   begin
     mscript.lines.SaveToFile(savedialog1.filename);
-    Caption:=rsLuaEngine+' '+ExtractFileNameOnly(savedialog1.filename);
+    frmLuaEngine.Caption:=rsLuaEngine+' '+ExtractFileNameOnly(savedialog1.filename);
   end;
 end;
 
@@ -1749,14 +1727,10 @@ begin
 
       CompleterInvokedByDot:=true;
 
-      try
-        scLuaCompleter.Execute('.',p2+p);
+      scLuaCompleter.Execute('.',p2+p);
 
-        if (scLuaCompleter.TheForm<>nil) and scLuaCompleter.TheForm.CanFocus then
-          scLuaCompleter.TheForm.SetFocus;
-
-      except
-      end;
+      if (scLuaCompleter.TheForm<>nil) and scLuaCompleter.TheForm.CanFocus then
+        scLuaCompleter.TheForm.SetFocus;
 
     end;
   end;
@@ -1789,10 +1763,7 @@ end;
 
 procedure TfrmLuaEngine.mScriptShowHint(Sender: TObject; HintInfo: PHintInfo);
 begin
-  asm
-  nop
 
-  end;
 end;
 
 

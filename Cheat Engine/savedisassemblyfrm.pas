@@ -7,7 +7,7 @@ interface
 uses
   LCLIntf, LResources, Messages, LMessages, SysUtils, Variants, Classes, Graphics,
   Controls, Forms, Dialogs, symbolhandler, symbolhandlerstructs, disassembler,
-  StdCtrls, ComCtrls, ActnList, Clipbrd, ExtCtrls, strutils, Parsers, betterControls;
+  StdCtrls, ComCtrls, ActnList, Clipbrd, ExtCtrls, strutils, Parsers;
 
 type
   TfrmSavedisassembly = class;

@@ -8,7 +8,7 @@ interface
 
 uses
   LCLIntf, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  StdCtrls, ExtCtrls, LResources, MemoryRecordUnit, CEFuncProc, CustomTypeHandler, commonTypeDefs, betterControls;
+  StdCtrls, ExtCtrls, LResources, MemoryRecordUnit, CEFuncProc, CustomTypeHandler, commonTypeDefs;
 
 type
 
@@ -173,8 +173,6 @@ begin
      or (memrec.vartype = vtQword)
      or (memrec.vartype = vtSingle)
      or (memrec.vartype = vtDouble)
-     or (memrec.vartype = vtByteArray)
-     or ((memrec.VarType = vtCustom) and (memrec.CustomType.scriptUsesString=false))
      then
   begin
     cbHex.checked:=memrec.ShowAsHex;
@@ -213,7 +211,6 @@ begin
     clientwidth:=lengthPanel.left+lengthPanel.Width;
     cbUnicode.visible:=vartype.itemindex=7;
     cbCodePage.visible:=cbUnicode.Visible;
-    cbHex.enabled:=vartype.itemindex=8;
   end
   // Other Types
   else

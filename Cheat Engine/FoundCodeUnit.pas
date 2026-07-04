@@ -14,17 +14,12 @@ uses
   LCLIntf, LResources, Messages, SysUtils, Variants, Classes, Graphics,
   Controls, Forms, Dialogs, StdCtrls, disassembler, ExtCtrls, Menus,
   NewKernelHandler, clipbrd, ComCtrls, fgl, formChangedAddresses, LastDisassembleData,
-  vmxfunctions, betterControls,  Maps, syncobjs, contexthandler;
+  vmxfunctions;
 
 type
   Tcoderecord = class
   private
     fhitcount: integer;
-    fcontext: pointer;
-    contexthandler: TContextInfo;
-    function getContext: pointer;
-    procedure setContext(ctx: Pointer);
-
     procedure setHitcount(c: integer);
   public
     firstSeen: TDateTime;
@@ -34,15 +29,12 @@ type
     size: integer;
     opcode: string;
     description: string;
-
+   // eax,ebx,ecx,edx,esi,edi,ebp,esp,eip: dword;
+    context: TContext;
+    armcontext: TARMCONTEXT;
     stack: record
       savedsize: ptruint;
       stack: pbyte;
-    end;
-
-    ipt: record
-      log: pointer;
-      size: integer;
     end;
 
     dbvmcontextbasic:    PPageEventBasic;
@@ -54,7 +46,6 @@ type
     formChangedAddresses: TfrmChangedAddresses;
 
     property hitcount: integer read fhitcount write setHitcount;
-    property context: pointer read getContext write setContext;
     procedure savestack;
     constructor create;
     destructor destroy; override;
@@ -75,7 +66,7 @@ type
     procedure addEntriesToList;
   public
     id: integer;
-    fcd: TFoundCodeDialog;
+    fcd: TfoundCodeDialog;
     procedure execute; override;
   end;
   {$endif}
@@ -87,8 +78,6 @@ type
     dbvmMissedEntries: TLabel;
     MenuItem1: TMenuItem;
     MenuItem2: TMenuItem;
-    miFindWhatCodeAccesses: TMenuItem;
-    MenuItem4: TMenuItem;
     miFindWhatAccesses: TMenuItem;
     miSaveTofile: TMenuItem;
     mInfo: TMemo;
@@ -111,7 +100,7 @@ type
     N1: TMenuItem;
     Copyselectiontoclipboard1: TMenuItem;
     Splitter1: TSplitter;
-    timerEntryInfoUpdate: TTimer;
+    timerAddressStringLookup: TTimer;
     procedure FormCreate(Sender: TObject);
     procedure FormDeactivate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -132,16 +121,14 @@ type
       Selected: Boolean);
     procedure MenuItem1Click(Sender: TObject);
     procedure miFindWhatAccessesClick(Sender: TObject);
-    procedure miFindWhatCodeAccessesClick(Sender: TObject);
     procedure miSaveTofileClick(Sender: TObject);
     procedure pmOptionsPopup(Sender: TObject);
     procedure Copyselectiontoclipboard1Click(Sender: TObject);
-    procedure timerEntryInfoUpdateTimer(Sender: TObject);
+    procedure timerAddressStringLookupTimer(Sender: TObject);
   private
     { Private declarations }
-    loadedPosition: boolean;
     setcountwidth: boolean;
-    fdebuggerinterfacewatchid: integer;
+    fdbvmwatchid: integer;
     {$ifdef windows}
     dbvmwatchpollthread: TDBVMWatchPollThread;
     {$endif}
@@ -154,29 +141,19 @@ type
     procedure addInfo(Coderecord: TCoderecord);
     procedure moreinfo;
     function getSelection: string;
-    procedure setdebuggerinterfacewatchid(id: integer);
-    procedure ChangedAddressClose(Sender: TObject; var CloseAction: TCloseAction);
+    procedure setdbvmwatchid(id: integer);
   public
     { Public declarations }
+
     addresswatched: ptruint;
     useexceptions: boolean;
     usesdebugregs: boolean;
     multiplerip: boolean;
 
     dbvmwatch_unlock: qword;
-
-
-    addRecord_Address: ptruint;
-    iptlog: pointer; //do not free this.  owned by the debugthreadhandler
-    iptlogsize: integer;
-    breakpoint: pointer;
-
-    seenAddressListCS: TCriticalSection; //should only be accessed by the debugger thread, but just in case...
-    seenAddressList: TMap; //list for the debugger thread to determine if it should be added to the list
-
     procedure AddRecord;
     procedure setChangedAddressCount(address :ptruint);
-    property debuggerinterfacewatchid: integer read fdebuggerinterfacewatchid write setdebuggerinterfacewatchid;
+    property dbvmwatchid: integer read fdbvmwatchid write setdbvmwatchid;
   end;
 
 
@@ -191,8 +168,7 @@ implementation
 
 uses CEFuncProc, CEDebugger,debughelper, debugeventhandler, MemoryBrowserFormUnit,
      MainUnit,kerneldebugger, AdvancedOptionsUnit ,formFoundcodeListExtraUnit,
-     MainUnit2, ProcessHandlerUnit, Globals, Parsers, DBK32functions, symbolhandler,
-     DebuggerInterfaceAPIWrapper, DBVMDebuggerInterface, breakpointtypedef;
+     MainUnit2, ProcessHandlerUnit, Globals, Parsers, DBK32functions, symbolhandler;
 
 
 
@@ -262,13 +238,10 @@ end;
 destructor TCodeRecord.Destroy;
 begin
   if stack.stack<>nil then
+  begin
     freememandnil(stack.stack);
 
-  if ipt.log<>nil then
-    freememandnil(ipt.log);
-
-  if fcontext<>nil then
-    freememandnil(fcontext);
+  end;
 
   inherited destroy;
 end;
@@ -284,7 +257,6 @@ end;
 procedure TDBVMWatchPollThread.addEntriesToList;
 var
   coderecord: TCodeRecord;
-  c: pcontext;
   i,j: integer;
   opcode,desc: string;
   li: TListItem;
@@ -302,8 +274,6 @@ var
   skip: boolean;
 
   debug,debug2: pointer;
-
-
 begin
   outputdebugstring('addEntriesToList');
 
@@ -385,11 +355,9 @@ begin
 
       coderecord:=TCoderecord.create;
       getmem(coderecord.dbvmcontextbasic, sizeof(TPageEventBasicArray));
-      c:=coderecord.context;
+      zeromemory(@coderecord.context, sizeof(coderecord.context));
 
       coderecord.dbvmcontextbasic^:=basicinfo;
-
-
 
       outputdebugstring('created coderecord and  dbvmcontextbasic');
 
@@ -399,7 +367,22 @@ begin
 
         1: //extended
         begin
-          copymemory(@c^.{$ifdef cpu64}FltSave{$else}ext{$endif}, @extended^[i].fpudata, sizeof(c^.{$ifdef cpu64}FltSave{$else}ext{$endif}));
+          OutputDebugString('Saving fpu data');
+
+          //outputdebugstring('FPUDATA is at offset '+inttostr(qword(@extended^[i].fpudata)-QWORD(@extended^[i])));
+          //outputdebugstring('sizeof(coderecord.context.FltSave)='+inttostr(sizeof(coderecord.context.FltSave)));
+          copymemory(@coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}, @extended^[i].fpudata, sizeof(coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}));
+
+          //getmem(debug, sizeof(coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}));
+          //copymemory(debug, @coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}, sizeof(coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}));
+
+          //getmem(debug2, 512);
+          //copymemory(debug2, @extended^[i].fpudata, 512);
+
+          //outputdebugstring('debug='+inttohex(ptruint(debug),8));
+         // outputdebugstring('debug2='+inttohex(ptruint(debug2),8));
+
+          //outputdebugstring('@coderecord.context.FltSave='+inttohex(qword(@coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}),8));
 
         end;
 
@@ -413,7 +396,7 @@ begin
 
         3: //extended with stack
         begin
-          copymemory(@c^.{$ifdef cpu64}FltSave{$else}ext{$endif}, @extendeds^[i].fpudata, sizeof(c^.{$ifdef cpu64}FltSave{$else}ext{$endif}));
+          copymemory(@coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}, @extendeds^[i].fpudata, sizeof(coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}));
           coderecord.stack.savedsize:=4096;
           getmem(coderecord.stack.stack, 4096);
 
@@ -452,35 +435,34 @@ begin
       //make compatible with older code:
       OutputDebugString('setting up compatibility context');
 
-      c^.{$ifdef cpu64}Rax{$else}Eax{$endif}:=coderecord.dbvmcontextbasic^.RAX;
-      c^.{$ifdef cpu64}Rbx{$else}Ebx{$endif}:=coderecord.dbvmcontextbasic^.RBX;
-      c^.{$ifdef cpu64}Rcx{$else}Ecx{$endif}:=coderecord.dbvmcontextbasic^.RCX;
-      c^.{$ifdef cpu64}Rdx{$else}Edx{$endif}:=coderecord.dbvmcontextbasic^.RDX;
-      c^.{$ifdef cpu64}Rsi{$else}Esi{$endif}:=coderecord.dbvmcontextbasic^.RSI;
-      c^.{$ifdef cpu64}Rdi{$else}Edi{$endif}:=coderecord.dbvmcontextbasic^.RDI;
-      c^.{$ifdef cpu64}Rbp{$else}Ebp{$endif}:=coderecord.dbvmcontextbasic^.RBP;
-      c^.{$ifdef cpu64}Rsp{$else}Esp{$endif}:=coderecord.dbvmcontextbasic^.Rsp;
-      c^.{$ifdef cpu64}Rip{$else}Eip{$endif}:=coderecord.dbvmcontextbasic^.Rip;
+      coderecord.context.{$ifdef cpu64}Rax{$else}Eax{$endif}:=coderecord.dbvmcontextbasic^.RAX;
+      coderecord.context.{$ifdef cpu64}Rbx{$else}Ebx{$endif}:=coderecord.dbvmcontextbasic^.RBX;
+      coderecord.context.{$ifdef cpu64}Rcx{$else}Ecx{$endif}:=coderecord.dbvmcontextbasic^.RCX;
+      coderecord.context.{$ifdef cpu64}Rdx{$else}Edx{$endif}:=coderecord.dbvmcontextbasic^.RDX;
+      coderecord.context.{$ifdef cpu64}Rsi{$else}Esi{$endif}:=coderecord.dbvmcontextbasic^.RSI;
+      coderecord.context.{$ifdef cpu64}Rdi{$else}Edi{$endif}:=coderecord.dbvmcontextbasic^.RDI;
+      coderecord.context.{$ifdef cpu64}Rbp{$else}Ebp{$endif}:=coderecord.dbvmcontextbasic^.RBP;
+      coderecord.context.{$ifdef cpu64}Rsp{$else}Esp{$endif}:=coderecord.dbvmcontextbasic^.Rsp;
+      coderecord.context.{$ifdef cpu64}Rip{$else}Eip{$endif}:=coderecord.dbvmcontextbasic^.Rip;
       {$ifdef cpu64}
-      c^.R8:=coderecord.dbvmcontextbasic^.R8;
-      c^.R9:=coderecord.dbvmcontextbasic^.R9;
-      c^.R10:=coderecord.dbvmcontextbasic^.R10;
-      c^.R11:=coderecord.dbvmcontextbasic^.R11;
-      c^.R12:=coderecord.dbvmcontextbasic^.R12;
-      c^.R13:=coderecord.dbvmcontextbasic^.R13;
-      c^.R14:=coderecord.dbvmcontextbasic^.R14;
-      c^.R15:=coderecord.dbvmcontextbasic^.R15;
+      coderecord.context.R8:=coderecord.dbvmcontextbasic^.R8;
+      coderecord.context.R9:=coderecord.dbvmcontextbasic^.R9;
+      coderecord.context.R10:=coderecord.dbvmcontextbasic^.R10;
+      coderecord.context.R11:=coderecord.dbvmcontextbasic^.R11;
+      coderecord.context.R12:=coderecord.dbvmcontextbasic^.R12;
+      coderecord.context.R13:=coderecord.dbvmcontextbasic^.R13;
+      coderecord.context.R14:=coderecord.dbvmcontextbasic^.R14;
+      coderecord.context.R15:=coderecord.dbvmcontextbasic^.R15;
       {$endif}
-      c^.EFlags:=coderecord.dbvmcontextbasic^.FLAGS;
-      c^.SegCs:=coderecord.dbvmcontextbasic^.CS;
-      c^.SegSs:=coderecord.dbvmcontextbasic^.SS;
-      c^.SegDs:=coderecord.dbvmcontextbasic^.DS;
-      c^.SegEs:=coderecord.dbvmcontextbasic^.ES;
-      c^.SegFs:=coderecord.dbvmcontextbasic^.FS;
-      c^.SegGs:=coderecord.dbvmcontextbasic^.GS;
+      coderecord.context.EFlags:=coderecord.dbvmcontextbasic^.FLAGS;
+      coderecord.context.SegCs:=coderecord.dbvmcontextbasic^.CS;
+      coderecord.context.SegSs:=coderecord.dbvmcontextbasic^.SS;
+      coderecord.context.SegDs:=coderecord.dbvmcontextbasic^.DS;
+      coderecord.context.SegEs:=coderecord.dbvmcontextbasic^.ES;
+      coderecord.context.SegFs:=coderecord.dbvmcontextbasic^.FS;
+      coderecord.context.SegGs:=coderecord.dbvmcontextbasic^.GS;
 
       coderecord.hitcount:=coderecord.dbvmcontextbasic^.Count+1;
-      coderecord.diffcount:=0;
 
       OutputDebugString('adding to the foundlist');
       li:=fcd.FoundCodeList.Items.Add;
@@ -504,30 +486,14 @@ begin
   lastSeen:=now;
 end;
 
-function TCodeRecord.getContext: pointer;
-begin
-  if fcontext=nil then
-  begin
-    outputdebugstring('TCodeRecord.getContext: fContext was nil. Allocating it');
-    contexthandler:=getBestContextHandler;
-    fcontext:=getmem(contexthandler.ContextSize);
-    ZeroMemory(fcontext, contexthandler.ContextSize);
-  end;
-
-  result:=fcontext;
-end;
-
-procedure TCodeRecord.setContext(ctx: Pointer);
-begin
-  contexthandler:=getBestContextHandler;
-  fcontext:=contexthandler.getCopy(ctx);
-end;
-
 procedure TCodeRecord.savestack;
 var base: qword;
 begin
   getmem(stack.stack, savedStackSize);
-  base:=contexthandler.StackPointerRegister^.getValue(context);
+  if processhandler.SystemArchitecture=archarm then
+    base:=armcontext.SP
+  else
+    base:=qword(context.{$ifdef cpu64}Rsp{$else}esp{$endif});
 
   if ReadProcessMemory(processhandle, pointer(base), stack.stack, savedStackSize, stack.savedsize)=false then
   begin
@@ -537,7 +503,8 @@ begin
   end;
 end;
 
-procedure TFoundCodeDialog.AddRecord;
+
+procedure TFoundCodedialog.AddRecord;
 {
 Invoked by the debugger thread
 It takes the data from the current thread and stores it in the processlist
@@ -556,56 +523,77 @@ var currentthread: TDebugThreadHandler;
 
   d: TDisassembler;
 begin
-  currentthread:=debuggerthread.CurrentThread;
-  address:=addRecord_Address;
-
-  //disassemble to get the opcode and size
-  address2:=address;
-  d:=TDisassembler.Create;
-  opcode:=d.disassemble(address2,desc);
-  ldi:=d.LastDisassembleData;
-  freeandnil(d);
-
-
-  coderecord:=TCoderecord.create;
-  coderecord.address:=address;
-  coderecord.size:=address2-address;
-  coderecord.opcode:=opcode;
-  coderecord.description:=desc;
-  coderecord.context:=currentthread.context;  //this makes a copy, so no worries about pointers
-  coderecord.LastDisassembleData:=ldi;
-  coderecord.savestack;
-  coderecord.hitcount:=1;
-  coderecord.diffcount:=0;
-
-  if iptlogsize<>0 then
+  //the debuggerthread is idle at this point
+  currentThread:=debuggerthread.CurrentThread;
+  if currentthread<>nil then
   begin
-    getmem(coderecord.ipt.log, iptlogsize);
-    copymemory(coderecord.ipt.log, iptlog, iptlogsize);
-  end
-  else
-    coderecord.ipt.log:=nil;
+    if processhandler.SystemArchitecture=archARM then
+    begin
+      address:=currentthread.armcontext.PC;
+    end
+    else
+    begin
+      address:=currentThread.context.{$ifdef cpu64}Rip{$else}eip{$endif};
+      if usesdebugregs or useexceptions then //find out the previous opcode
+      begin
+        address2:=address;
+        d:=TDisassembler.Create;
+        d.disassemble(address2,desc);
+        if copy(d.LastDisassembleData.opcode,1,3)<>'REP' then
+          address:=previousopcode(address);
 
-  coderecord.ipt.size:=iptlogsize;
+        freeandnil(d);
+      end;
+    end;
 
 
-  seenAddressListCS.Enter;
-  try
-    seenAddressList.Add(address, coderecord);
-  except
-    //should NEVER happen as AddRecord is only called when it's not in the list, but just to be sure...
+
+    //disassemble to get the opcode and size
+    address2:=address;
+    d:=TDisassembler.Create;
+    opcode:=d.disassemble(address2,desc);
+    ldi:=d.LastDisassembleData;
+
+
+    freeandnil(d);
+
+
+    //check if address is inside the list
+    for i:=0 to foundcodelist.Items.Count-1 do
+      if TCodeRecord(foundcodelist.Items[i].data).address=address then
+      begin
+        //it's already in the list
+        TCodeRecord(foundcodelist.Items[i].data).hitcount:=TCodeRecord(foundcodelist.Items[i].data).hitcount+1;
+        if miFindWhatAccesses.checked then
+          FoundcodeList.items[i].caption:=inttostr(TCodeRecord(foundcodelist.Items[i].data).hitcount)+' ('+inttostr(TCodeRecord(foundcodelist.Items[i].data).diffcount)+')'
+        else
+          FoundcodeList.items[i].caption:=inttostr(TCodeRecord(foundcodelist.Items[i].data).hitcount);
+
+        exit;
+      end;
+
+
+
+    coderecord:=TCoderecord.create;
+    coderecord.address:=address;
+    coderecord.size:=address2-address;
+    coderecord.opcode:=opcode;
+    coderecord.description:=desc;
+    coderecord.context:=currentthread.context^;
+    coderecord.armcontext:=currentthread.armcontext;
+    coderecord.LastDisassembleData:=ldi;
+    coderecord.savestack;
+    coderecord.hitcount:=1;
+
+
+    li:=FoundCodeList.Items.Add;
+    li.caption:='1';
+    li.SubItems.add(opcode);
+    li.data:=coderecord;
+
+    if miFindWhatAccesses.Checked then //add it
+      coderecord.formChangedAddresses:=debuggerthread.FindWhatCodeAccesses(address, self);  //ffffffuuuuuuuuuu. Rebuild again
   end;
-  seenAddressListCS.Leave;
-
-  li:=FoundCodeList.Items.Add;
-  li.caption:='1';
-  li.SubItems.add(opcode);
-  li.data:=coderecord;
-
-  if miFindWhatAccesses.Checked then //add it
-    coderecord.formChangedAddresses:=debuggerthread.FindWhatCodeAccesses(address, self);  //ffffffuuuuuuuuuu. Rebuild again
-
-  debuggerthread.guiupdate:=true;
 end;
 
 procedure TFoundCodeDialog.stopdbvmwatch;
@@ -619,10 +607,10 @@ begin
   end;
 
 
-  if debuggerinterfacewatchid<>-1 then
+  if dbvmwatchid<>-1 then
   begin
-    dbvm_watch_delete(debuggerinterfacewatchid);
-    debuggerinterfacewatchid:=-1;
+    dbvm_watch_delete(dbvmwatchid);
+    dbvmwatchid:=-1;
   end;
 
   if dbvmwatch_unlock<>0 then
@@ -633,10 +621,10 @@ begin
   {$endif}
 end;
 
-procedure TFoundCodeDialog.setdebuggerinterfacewatchid(id: integer);
+procedure TFoundCodedialog.setdbvmwatchid(id: integer);
 begin
   {$IFDEF windows}
-  fdebuggerinterfacewatchid:=id;
+  fdbvmwatchid:=id;
 
   if id<>-1 then
   begin
@@ -654,7 +642,7 @@ begin
 end;
 
 
-procedure TFoundCodeDialog.setChangedAddressCount(address :ptruint);
+procedure TFoundCodedialog.setChangedAddressCount(address :ptruint);
 var i: integer;
 begin
   for i:=0 to foundcodelist.Items.Count-1 do
@@ -667,16 +655,13 @@ begin
     end;
 end;
 
-procedure TFoundCodeDialog.addInfo(Coderecord: TCoderecord);
+procedure TFoundCodedialog.addInfo(Coderecord: TCoderecord);
 var
   address: ptruint;
   disassembled: array[1..5] of string;
   firstchar: char;
   hexcount: integer;
   temp: string;
-  i: integer;
-
-  gplist: PContextElementRegisterList;
 begin
   if processhandler.is64Bit then
     hexcount:=16
@@ -716,11 +701,57 @@ begin
     minfo.Lines.Add(disassembled[5]);
     minfo.Lines.Add('');
 
+    if processhandler.SystemArchitecture=archarm then
+    begin
+      minfo.Lines.Add('R10='+inttohex(coderecord.armcontext.R0,8));
+      minfo.Lines.Add('R11='+inttohex(coderecord.armcontext.R1,8));
+      minfo.Lines.Add('R12='+inttohex(coderecord.armcontext.R2,8));
+      minfo.Lines.Add('R13='+inttohex(coderecord.armcontext.R3,8));
+      minfo.Lines.Add('R14='+inttohex(coderecord.armcontext.R4,8));
+      minfo.Lines.Add('R15='+inttohex(coderecord.armcontext.R5,8));
+      minfo.Lines.Add('R16='+inttohex(coderecord.armcontext.R6,8));
+      minfo.Lines.Add('R17='+inttohex(coderecord.armcontext.R7,8));
+      minfo.Lines.Add('R18='+inttohex(coderecord.armcontext.R8,8));
+      minfo.Lines.Add('R19='+inttohex(coderecord.armcontext.R9,8));
+      minfo.Lines.Add('R10='+inttohex(coderecord.armcontext.R10,8));
+      minfo.Lines.Add('FP='+inttohex(coderecord.armcontext.FP,8));
+      minfo.Lines.Add('IP='+inttohex(coderecord.armcontext.IP,8));
+      minfo.Lines.Add('SP='+inttohex(coderecord.armcontext.SP,8));
+      minfo.Lines.Add('LR='+inttohex(coderecord.armcontext.LR,8));
+      minfo.Lines.Add('PC='+inttohex(coderecord.armcontext.PC,8));
+      minfo.Lines.Add('CPSR='+inttohex(coderecord.armcontext.CPSR,8));
+      minfo.Lines.Add('ORIG_R0='+inttohex(coderecord.armcontext.ORIG_R0,8));
+    end
+    else
+    begin
+      if processhandler.is64bit then
+        firstchar:='R' else firstchar:='E';
 
-    gplist:=coderecord.contexthandler.getGeneralPurposeRegisters;
-    if gplist<>nil then
-      for i:=0 to length(gplist^)-1 do
-        minfo.Lines.Add(gplist^[i].name+'='+gplist^[i].getFullValueString(coderecord.context));
+      minfo.Lines.Add(firstchar+'AX='+IntToHex(coderecord.context.{$ifdef cpu64}Rax{$else}Eax{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'BX='+IntToHex(coderecord.context.{$ifdef cpu64}Rbx{$else}Ebx{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'CX='+IntToHex(coderecord.context.{$ifdef cpu64}Rcx{$else}Ecx{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'DX='+IntToHex(coderecord.context.{$ifdef cpu64}Rdx{$else}Edx{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'SI='+IntToHex(coderecord.context.{$ifdef cpu64}Rsi{$else}Esi{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'DI='+IntToHex(coderecord.context.{$ifdef cpu64}Rdi{$else}Edi{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'SP='+IntToHex(coderecord.context.{$ifdef cpu64}Rsp{$else}Esp{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'BP='+IntToHex(coderecord.context.{$ifdef cpu64}Rbp{$else}Ebp{$endif},hexcount));
+      minfo.Lines.Add(firstchar+'IP='+IntToHex(coderecord.context.{$ifdef cpu64}Rip{$else}Eip{$endif},hexcount));
+
+      {$ifdef cpu64}
+      if processhandler.is64bit then
+      begin
+        minfo.Lines.Add('R8='+IntToHex(coderecord.context.r8,16));
+        minfo.Lines.Add('R9='+IntToHex(coderecord.context.r9,16));
+        minfo.Lines.Add('R10='+IntToHex(coderecord.context.r10,16));
+        minfo.Lines.Add('R11='+IntToHex(coderecord.context.r11,16));
+        minfo.Lines.Add('R12='+IntToHex(coderecord.context.r12,16));
+        minfo.Lines.Add('R13='+IntToHex(coderecord.context.r13,16));
+        minfo.Lines.Add('R14='+IntToHex(coderecord.context.r14,16));
+        minfo.Lines.Add('R15='+IntToHex(coderecord.context.r15,16));
+      end;
+      {$endif}
+
+    end;
 
     minfo.lines.add('');
     minfo.lines.add('');
@@ -735,20 +766,7 @@ begin
   end;
 end;
 
-procedure TFoundCodeDialog.ChangedAddressClose(Sender: TObject; var CloseAction: TCloseAction);
-var i: integer;
-  coderecord: Tcoderecord;
-begin
-  for i:=0 to FoundCodeList.Items.Count-1 do
-  begin
-    coderecord:=TCodeRecord(foundcodelist.items[i].data);
-    if coderecord.formChangedAddresses=sender then
-      coderecord.formChangedAddresses:=nil;
-  end;
-
-end;
-
-procedure TFoundCodeDialog.moreinfo;
+procedure TFoundCodedialog.moreinfo;
 var
   disassembled: array[1..5] of record
     s: string;
@@ -775,11 +793,7 @@ var
 
     offset: integer;
 
-    lbl: TLabel;
-
   d: TDisassembler;
-
-  gplist: PContextElementRegisterList;
 begin
   if processhandler.is64bit then
     firstchar:='R' else firstchar:='E';
@@ -788,7 +802,7 @@ begin
   if itemindex<>-1 then
   begin
     FormFoundCodeListExtra:=TFormFoundCodeListExtra.Create(application);
-    if useexceptions or (currentdebuggerinterface is TDBVMDebugInterface) then
+    if useexceptions then
       FormFoundCodeListExtra.Label18.Visible:=false
     else
       FormFoundCodeListExtra.Label18.Visible:=true;
@@ -798,34 +812,20 @@ begin
     begin
       if not coderecord.formChangedAddresses.visible then //override userdefined positioning
       begin
-        //LCLIntf.GetWindowRect(coderecord.formChangedAddresses.handle, cw);
-        //LCLIntf.GetWindowRect(FormFoundCodeListExtra.handle, ew);
+        LCLIntf.GetWindowRect(coderecord.formChangedAddresses.handle, cw);
+        LCLIntf.GetWindowRect(FormFoundCodeListExtra.handle, ew);
 
-        //coderecord.formChangedAddresses.left:=(ew.Left-(cw.Right-cw.left));
-        //coderecord.formChangedAddresses.top:=FormFoundCodeListExtra.top;
+        coderecord.formChangedAddresses.left:=(ew.Left-(cw.Right-cw.left));
+        coderecord.formChangedAddresses.top:=FormFoundCodeListExtra.top;
 
       end;
 
       coderecord.formChangedAddresses.show;
-      coderecord.formChangedAddresses.AddHandlerClose(ChangedAddressClose);
     end;
 
 
     address:=coderecord.address;
     {$IFDEF windows}
-    if CurrentDebuggerInterface is TDBVMDebugInterface then
-    begin
-      {$ifdef cpu64}
-      if pcontext(coderecord.context)^.P2Home<>0 then
-      begin
-        d:=TCR3Disassembler.Create;
-        TCR3Disassembler(d).CR3:=pcontext(coderecord.context)^.P2Home;
-      end
-      else
-      {$endif}
-        d:=TDisassembler.Create;
-    end
-    else
     if coderecord.dbvmcontextbasic<>nil then
     begin
       d:=TCR3Disassembler.Create;
@@ -895,10 +895,8 @@ begin
 
     with FormFoundCodeListExtra do
     begin
-      pnlEPTWatch.visible:=false;
-
-      label1.Caption:=disassembled[1].s;
-      label1.tag:=disassembled[1].a;
+      dbvmMissedEntries.Caption:=disassembled[1].s;
+      dbvmMissedEntries.tag:=disassembled[1].a;
 
       Label2.Caption:=disassembled[2].s;
       Label2.tag:=disassembled[2].a;
@@ -912,147 +910,109 @@ begin
       Label5.Caption:=disassembled[5].s;
       Label5.tag:=disassembled[5].a;
 
-
-      BeginFormUpdate;
-      while pnlRegisters.ControlCount>0 do
-        pnlRegisters.Controls[0].Destroy;
-
-      //controlsPerLine:
-      //9 - 8 digit registers = 3 controls/line  (3 rows)  (3x3)      (24 digits/row)
-      //16 - 16 digit registers = registers = 5
-
-      gplist:=coderecord.contexthandler.getGeneralPurposeRegisters;
-      if gplist<>nil then
-      begin
-        pnlRegisters.ChildSizing.ControlsPerLine:=length(gplist^) div 3;
-        for i:=0 to length(gplist^)-1 do
-        begin
-          lbl:=tlabel.create(FormFoundCodeListExtra);
-          lbl.Caption:=gplist^[i].name+'='+gplist^[i].getValueString(coderecord.context);
-          lbl.tag:=ptruint(@gplist^[i]);
-          lbl.parent:=pnlRegisters;
-          lbl.OnMouseDown:=registerMouseDown;
-          lbl.OnDblClick:=RegisterDblClick;
-        end;
-      end;
-      EndFormUpdate;
-     (*
       if processhandler.SystemArchitecture=archarm then
       begin
-        formfoundcodelistextra.label17.caption:='';
+        //repurpose the x86 32-bit labels
+        lblRAX.caption:=' R0='+IntToHex(coderecord.armcontext.R0,8);
+        lblRDX.caption:=' R1='+IntToHex(coderecord.armcontext.R1,8);
+        lblRBP.caption:=' R2='+IntToHex(coderecord.armcontext.R2,8);
+        lblRBX.caption:=' R3='+IntToHex(coderecord.armcontext.R3,8);
+        lblRSI.caption:=' R4='+IntToHex(coderecord.armcontext.R4,8);
+        lblRSP.caption:=' R5='+IntToHex(coderecord.armcontext.R5,8);
+        lblRCX.caption:=' R6='+IntToHex(coderecord.armcontext.R6,8);
+        lblRDI.caption:=' R7='+IntToHex(coderecord.armcontext.R7,8);
+        lblRIP.caption:=' R8='+IntToHex(coderecord.armcontext.R8,8);
 
-        if processhandler.is64Bit then
-        begin
-          //just start from scratch
-          while pnlRegisters.ControlCount>0 do
-            pnlRegisters.Controls[0].Destroy;
+        lblR9:=tlabel.Create(FormFoundCodeListExtra);
+        lblR9.Top:=lblRCX.top+(lblRCX.top-lblRBX.top);
+        lblR9.left:=lblRCX.left;
+        lblR9.caption:=' R9='+IntToHex(coderecord.armcontext.R9,8);
+        lblR9.parent:=FormFoundCodeListExtra.panel6;
+        lblR9.OnMouseDown:=registerMouseDown;
+        lblR9.OnDblClick:=RegisterDblClick;
+        lblR9.Align:=lblrcx.Align;
 
-          pnlRegisters.ChildSizing.ControlsPerLine:=6;
+        lblR10:=tlabel.Create(FormFoundCodeListExtra);
+        lblR10.Top:=lblRCX.top+(lblRCX.top-lblRBX.top);
+        lblR10.left:=lblRDI.left;
+        lblR10.caption:='R10='+IntToHex(coderecord.armcontext.R10,8);
+        lblR10.parent:=FormFoundCodeListExtra.panel6;
+        lblR10.OnMouseDown:=registerMouseDown;
+        lblR10.OnDblClick:=RegisterDblClick;
+        lblR10.Align:=lblrcx.Align;
 
-          for i:=0 to 30 do
-          begin
-            lbl:=tlabel.create(FormFoundCodeListExtra);
-            lbl.Caption:=format('X%d=%.8x',[i,coderecord.arm64context.regs.X[i]]);
-            lbl.parent:=pnlRegisters;
-            lbl.OnMouseDown:=registerMouseDown;
-            lbl.OnDblClick:=RegisterDblClick;
-          end;
+        lblR11:=tlabel.Create(FormFoundCodeListExtra);
+        lblR11.Top:=lblRCX.top+(lblRCX.top-lblRBX.top);
+        lblR11.left:=lblRIP.left;
+        lblR11.caption:=' FP='+IntToHex(coderecord.armcontext.FP,8);
+        lblR11.parent:=FormFoundCodeListExtra.panel6;
+        lblR11.OnMouseDown:=registerMouseDown;
+        lblR11.OnDblClick:=RegisterDblClick;
+        lblR11.Align:=lblrcx.Align;
+                //new row
+        lblR12:=tlabel.Create(FormFoundCodeListExtra);
+        lblR12.Top:=lblR9.top+(lblRCX.top-lblRBX.top);
+        lblR12.left:=lblRCX.left;
+        lblR12.caption:=' IP='+IntToHex(coderecord.armcontext.IP,8);
+        lblR12.parent:=FormFoundCodeListExtra.panel6;
+        lblR12.OnMouseDown:=registerMouseDown;
+        lblR12.OnDblClick:=RegisterDblClick;
+        lblR12.Align:=lblrcx.Align;
 
-          lbl:=tlabel.create(FormFoundCodeListExtra);
-          lbl.Caption:=format('SP=%.8x',[coderecord.arm64context.SP]);
-          lbl.parent:=pnlRegisters;
-          lbl.OnMouseDown:=registerMouseDown;
-          lbl.OnDblClick:=RegisterDblClick;
+        lblR13:=tlabel.Create(FormFoundCodeListExtra);
+        lblR13.Top:=lblR9.top+(lblRCX.top-lblRBX.top);
+        lblR13.left:=lblRDI.left;
+        lblR13.caption:=' SP='+IntToHex(coderecord.armcontext.SP,8);
+        lblR13.parent:=FormFoundCodeListExtra.panel6;
+        lblR13.OnMouseDown:=registerMouseDown;
+        lblR13.OnDblClick:=RegisterDblClick;
+        lblR13.Align:=lblrcx.Align;
 
-          lbl:=tlabel.create(FormFoundCodeListExtra);
-          lbl.Caption:=format('PC=%.8x',[coderecord.arm64context.PC]);
-          lbl.parent:=pnlRegisters;
-          lbl.OnMouseDown:=registerMouseDown;
-          lbl.OnDblClick:=RegisterDblClick;
+        lblR14:=tlabel.Create(FormFoundCodeListExtra);
+        lblR14.Top:=lblR9.top+(lblRCX.top-lblRBX.top);
+        lblR14.left:=lblRIP.left;
+        lblR14.caption:=' LR='+IntToHex(coderecord.armcontext.LR,8);
+        lblR14.parent:=FormFoundCodeListExtra.panel6;
+        lblR14.OnMouseDown:=registerMouseDown;
+        lblR14.OnDblClick:=RegisterDblClick;
+        lblR14.Align:=lblrcx.Align;
+        //new line
 
-          lbl:=tlabel.create(FormFoundCodeListExtra);
-          lbl.Caption:=format('PSTATE=%.8x',[coderecord.arm64context.PSTATE]);
-          lbl.parent:=pnlRegisters;
-          lbl.OnMouseDown:=registerMouseDown;
-          lbl.OnDblClick:=RegisterDblClick;
-        end
-        else
-        begin
-          //repurpose the x86 32-bit labels
-          lblRAX.caption:=' R0='+IntToHex(coderecord.armcontext.R0,8);
-          lblRDX.caption:=' R1='+IntToHex(coderecord.armcontext.R1,8);
-          lblRBP.caption:=' R2='+IntToHex(coderecord.armcontext.R2,8);
-          lblRBX.caption:=' R3='+IntToHex(coderecord.armcontext.R3,8);
-          lblRSI.caption:=' R4='+IntToHex(coderecord.armcontext.R4,8);
-          lblRSP.caption:=' R5='+IntToHex(coderecord.armcontext.R5,8);
-          lblRCX.caption:=' R6='+IntToHex(coderecord.armcontext.R6,8);
-          lblRDI.caption:=' R7='+IntToHex(coderecord.armcontext.R7,8);
-          lblRIP.caption:=' R8='+IntToHex(coderecord.armcontext.R8,8);
+        lblR15:=tlabel.Create(FormFoundCodeListExtra);
+        lblR15.Top:=lblR12.top+(lblRCX.top-lblRBX.top);
+        lblR15.left:=lblRCX.left;
+        lblR15.caption:=' PC='+IntToHex(coderecord.armcontext.PC,8);
+        lblR15.parent:=FormFoundCodeListExtra.panel6;
+        lblR15.OnMouseDown:=registerMouseDown;
+        lblR15.OnDblClick:=RegisterDblClick;
+        lblR15.Align:=lblrcx.Align;
 
-          lblR9:=tlabel.Create(FormFoundCodeListExtra);
-          lblR9.caption:=' R9='+IntToHex(coderecord.armcontext.R9,8);
-          lblR9.parent:=pnlRegisters;
-          lblR9.OnMouseDown:=registerMouseDown;
-          lblR9.OnDblClick:=RegisterDblClick;
+        lblR16:=tlabel.Create(FormFoundCodeListExtra);
+        lblR16.Top:=lblR12.top+(lblRCX.top-lblRBX.top);
+        lblR16.left:=lblRDI.left;
+        lblR16.caption:=' CPSR='+IntToHex(coderecord.armcontext.CPSR,8);
+        lblR16.parent:=FormFoundCodeListExtra.panel6;
+        lblR16.OnMouseDown:=registerMouseDown;
+        lblR16.OnDblClick:=RegisterDblClick;
+        lblR16.Align:=lblrcx.Align;
 
-          lblR10:=tlabel.Create(FormFoundCodeListExtra);
-          lblR10.caption:='R10='+IntToHex(coderecord.armcontext.R10,8);
-          lblR10.parent:=pnlRegisters;
-          lblR10.OnMouseDown:=registerMouseDown;
-          lblR10.OnDblClick:=RegisterDblClick;
+        lblR17:=tlabel.Create(FormFoundCodeListExtra);
+        lblR17.Top:=lblR12.top+(lblRCX.top-lblRBX.top);
+        lblR17.left:=lblRIP.left;
+        lblR17.caption:=' ORIG_R0='+IntToHex(coderecord.armcontext.ORIG_R0,8);
+        lblR17.parent:=FormFoundCodeListExtra.panel6;
+        lblR17.OnMouseDown:=registerMouseDown;
+        lblR17.OnDblClick:=RegisterDblClick;
+        lblR17.Align:=lblrcx.Align;
 
-          lblR11:=tlabel.Create(FormFoundCodeListExtra);
-          lblR11.caption:=' FP='+IntToHex(coderecord.armcontext.FP,8);
-          lblR11.parent:=pnlRegisters;
-          lblR11.OnMouseDown:=registerMouseDown;
-          lblR11.OnDblClick:=RegisterDblClick;
-                  //new row
-          lblR12:=tlabel.Create(FormFoundCodeListExtra);
-          lblR12.caption:=' IP='+IntToHex(coderecord.armcontext.IP,8);
-          lblR12.parent:=pnlRegisters;
-          lblR12.OnMouseDown:=registerMouseDown;
-          lblR12.OnDblClick:=RegisterDblClick;
-
-          lblR13:=tlabel.Create(FormFoundCodeListExtra);
-          lblR13.caption:=' SP='+IntToHex(coderecord.armcontext.SP,8);
-          lblR13.parent:=pnlRegisters;
-          lblR13.OnMouseDown:=registerMouseDown;
-          lblR13.OnDblClick:=RegisterDblClick;
-
-          lblR14:=tlabel.Create(FormFoundCodeListExtra);
-          lblR14.caption:=' LR='+IntToHex(coderecord.armcontext.LR,8);
-          lblR14.parent:=pnlRegisters;
-          lblR14.OnMouseDown:=registerMouseDown;
-          lblR14.OnDblClick:=RegisterDblClick;
-          //new line
-
-          lblR15:=tlabel.Create(FormFoundCodeListExtra);
-          lblR15.caption:=' PC='+IntToHex(coderecord.armcontext.PC,8);
-          lblR15.parent:=pnlRegisters;
-          lblR15.OnMouseDown:=registerMouseDown;
-          lblR15.OnDblClick:=RegisterDblClick;
-
-          lblR16:=tlabel.Create(FormFoundCodeListExtra);
-          lblR16.caption:=' CPSR='+IntToHex(coderecord.armcontext.CPSR,8);
-          lblR16.parent:=pnlRegisters;
-          lblR16.OnMouseDown:=registerMouseDown;
-          lblR16.OnDblClick:=RegisterDblClick;
-
-          lblR17:=tlabel.Create(FormFoundCodeListExtra);
-          lblR17.caption:=' ORIG_R0='+IntToHex(coderecord.armcontext.ORIG_R0,8);
-          lblR17.parent:=pnlRegisters;
-          lblR17.OnMouseDown:=registerMouseDown;
-          lblR17.OnDblClick:=RegisterDblClick;
-        end;
         {Constraints.MinHeight:=panel6.top+(lblR17.top+lblR17.height)+16+panel5.height;
         if height<Constraints.MinHeight then
           height:=Constraints.MinHeight;   }
       end
-      else *)
+      else
       begin
 
 
-        (*
 
         lblRAX.caption:=firstchar+'AX='+IntToHex(coderecord.context.{$ifdef cpu64}Rax{$else}Eax{$endif},8);
         lblRBX.caption:=firstchar+'BX='+IntToHex(coderecord.context.{$ifdef cpu64}Rbx{$else}Ebx{$endif},8);
@@ -1143,23 +1103,21 @@ begin
           lblR15.Align:=lblrcx.Align;
           lblR15.Color:=lblRAX.Color;
 
-          if (currentdebuggerinterface is TDBVMDebugInterface) and (coderecord.context.P2Home<>0) then
-          begin
-            lblR16:=tlabel.Create(FormFoundCodeListExtra);
-            lblR16.caption:=' CR3='+IntToHex(coderecord.context.P2Home,8);
-            lblR16.parent:=FormFoundCodeListExtra.pnlRegisters;
-            lblR16.OnMouseDown:=registerMouseDown;
-            lblR16.OnDblClick:=RegisterDblClick;
-            lblR16.Align:=lblrcx.Align;
-            lblR16.Color:=lblRAX.Color;
-          end;
+
 
           lblRBP.BringToFront;
           lblRSP.BringToFront;
           lblRIP.BringToFront;
+
+
+     {     Constraints.MinHeight:=panel6.top+(lblR15.top+lblR15.height)+16+panel5.height;
+          if height<Constraints.MinHeight then
+            height:=Constraints.MinHeight;     }
+  //        if panel6.clientheight<lblR15.top+lblR15.height then //make room
+  //          height:=height+(lblR15.top+lblR15.height)-(lblRDI.top+lblRDI.height);
         end;
         {$endif}
-        *)
+
 
         if coderecord.dbvmcontextbasic<>nil then
         begin
@@ -1168,7 +1126,6 @@ begin
           lblVirtualAddress.caption:=format('Virtual Address=%.8x',[coderecord.dbvmcontextbasic^.VirtualAddress]);
           lblFSBase.caption:=format('FS Base=%.8x',[coderecord.dbvmcontextbasic^.FSBASE]);
           lblGSBase.caption:=format('GS Base=%.8x',[coderecord.dbvmcontextbasic^.GSBASE]);
-          lblGSBaseKernel.caption:=format('GS Base Kernel=%.8x',[coderecord.dbvmcontextbasic^.GSBASE_KERNEL]);
           lblCR3.caption:=format('CR3=%.8x',[coderecord.dbvmcontextbasic^.CR3]);
         end
         else
@@ -1196,54 +1153,74 @@ begin
 
         offset:=integer(coderecord.LastDisassembleData.modrmValue);
 
-        if processhandler.SystemArchitecture=archX86 then
-          formfoundcodelistextra.probably:=addresswatched-offset;
+        (*
+        if coderecord.LastDisassembleData.hasSib then
+        begin
+          case coderecord.LastDisassembleData.sibIndex of
+            0: inc(offset, coderecord.context.{$ifdef cpu64}Rax{$else}Eax{$endif}*coderecord.LastDisassembleData.sibScaler);
+            1: inc(offset, coderecord.context.{$ifdef cpu64}Rcx{$else}Ecx{$endif}*coderecord.LastDisassembleData.sibScaler);
+            2: inc(offset, coderecord.context.{$ifdef cpu64}Rdx{$else}Edx{$endif}*coderecord.LastDisassembleData.sibScaler);
+            3: inc(offset, coderecord.context.{$ifdef cpu64}Rbx{$else}Ebx{$endif}*coderecord.LastDisassembleData.sibScaler);
+            5: inc(offset, coderecord.context.{$ifdef cpu64}Rbp{$else}Ebp{$endif}*coderecord.LastDisassembleData.sibScaler);
+            6: inc(offset, coderecord.context.{$ifdef cpu64}Rsi{$else}Esi{$endif}*coderecord.LastDisassembleData.sibScaler);
+            7: inc(offset, coderecord.context.{$ifdef cpu64}Rdi{$else}Edi{$endif}*coderecord.LastDisassembleData.sibScaler);
+            {$ifdef cpu64}
+            8: inc(offset, coderecord.context.R8*coderecord.LastDisassembleData.sibScaler);
+            9: inc(offset, coderecord.context.R9*coderecord.LastDisassembleData.sibScaler);
+            10: inc(offset, coderecord.context.R10*coderecord.LastDisassembleData.sibScaler);
+            11: inc(offset, coderecord.context.R11*coderecord.LastDisassembleData.sibScaler);
+            12: inc(offset, coderecord.context.R12*coderecord.LastDisassembleData.sibScaler);
+            13: inc(offset, coderecord.context.R13*coderecord.LastDisassembleData.sibScaler);
+            14: inc(offset, coderecord.context.R14*coderecord.LastDisassembleData.sibScaler);
+            15: inc(offset, coderecord.context.R15*coderecord.LastDisassembleData.sibScaler);
+            {$endif}
+          end;
+        end; *)
+
+        formfoundcodelistextra.probably:=addresswatched-offset;
       end
       else
       begin
-        if processhandler.SystemArchitecture=archX86 then
+        //try the old code
+        if pos(firstchar+'ax',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rax{$else}Eax{$endif});
+        if pos(firstchar+'bx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rbx{$else}Ebx{$endif});
+        if pos(firstchar+'cx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rcx{$else}Ecx{$endif});
+        if pos(firstchar+'dx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rdx{$else}Edx{$endif});
+        if pos(firstchar+'di',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rdi{$else}Edi{$endif});
+        if pos(firstchar+'si',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rsi{$else}Esi{$endif});
+        if pos(firstchar+'bp',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rbp{$else}Ebp{$endif});
+        if pos(firstchar+'sp',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.{$ifdef cpu64}Rsp{$else}Esp{$endif});
+        {$ifdef cpu64}
+        if processhandler.is64Bit then
         begin
-          //todo: contexthandler lookups
-          //try the old code (coderecord.context is
-          if pos(firstchar+'ax',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rax{$else}Eax{$endif});
-          if pos(firstchar+'bx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rbx{$else}Ebx{$endif});
-          if pos(firstchar+'cx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rcx{$else}Ecx{$endif});
-          if pos(firstchar+'dx',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rdx{$else}Edx{$endif});
-          if pos(firstchar+'di',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rdi{$else}Edi{$endif});
-          if pos(firstchar+'si',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rsi{$else}Esi{$endif});
-          if pos(firstchar+'bp',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rbp{$else}Ebp{$endif});
-          if pos(firstchar+'sp',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.{$ifdef cpu64}Rsp{$else}Esp{$endif});
-          {$ifdef cpu64}
-          if processhandler.is64Bit then
-          begin
-            if pos('r8',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r8);
-            if pos('r9',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r9);
-            if pos('r0',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r10);
-            if pos('r1',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r11);
-            if pos('r2',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r12);
-            if pos('r3',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r13);
-            if pos('r4',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r14);
-            if pos('r5',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, pcontext(coderecord.context)^.r15);
-          end;
-          {$endif}
+          if pos('r8',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r8);
+          if pos('r9',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r9);
+          if pos('r0',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r10);
+          if pos('r1',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r11);
+          if pos('r2',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r12);
+          if pos('r3',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r13);
+          if pos('r4',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r14);
+          if pos('r5',temp)>0 then maxregistervalue:=MaxX(maxregistervalue, coderecord.context.r15);
+        end;
+        {$endif}
 
-          //the offset is always at the end, so read from back to front
-          //todo: use addresswatched
+        //the offset is always at the end, so read from back to front
+        //todo: use addresswatched
 
 
 
-          temp2:='';
-          for i:=length(temp) downto 1 do
-            if temp[i] in ['0'..'9','a'..'f'] then temp2:=temp[i]+temp2 else break;
+        temp2:='';
+        for i:=length(temp) downto 1 do
+          if temp[i] in ['0'..'9','a'..'f'] then temp2:=temp[i]+temp2 else break;
 
-          if temp2<>'' then //I know this isn't completely correct e.g: [eax*4] but even then the 4 will NEVER be bigger than eax (unless it's to cause a crash)
-          begin
-            p:=StrToQWordEx('$'+temp2);
-            if p>maxregistervalue then maxregistervalue:=p;
-          end;
+        if temp2<>'' then //I know this isn't completely correct e.g: [eax*4] but even then the 4 will NEVER be bigger than eax (unless it's to cause a crash)
+        begin
+          p:=StrToQWordEx('$'+temp2);
+          if p>maxregistervalue then maxregistervalue:=p;
+        end;
 
-          formfoundcodelistextra.probably:=maxregistervalue;
-        end;  //todo: arm
+        formfoundcodelistextra.probably:=maxregistervalue;
+
       end;
     end else formfoundcodelistextra.label17.caption:='';
 
@@ -1259,8 +1236,15 @@ begin
       formfoundcodelistextra.Width:=w+5;
 
 
-    formfoundcodelistextra.context:=coderecord.contexthandler.getCopy(coderecord.context);
+    //copy the context and the stack to the more info window. the foundcode unit might get destroyed
+    outputdebugstring('setting formfoundcodelistextra.context which is at '+inttohex(qword(@formfoundcodelistextra.context),8));
+    outputdebugstring('it''s fltsave spot is at '+inttohex(qword(@formfoundcodelistextra.context.{$ifdef cpu64}FltSave{$else}ext{$endif}),8));
 
+
+    outputdebugstring('coderecord.context is at '+inttohex(qword(@coderecord.context),8));
+    outputdebugstring('coderecord.context.fltsave is at '+inttohex(qword(@coderecord.context.{$ifdef cpu64}FltSave{$else}ext{$endif}),8));
+
+    formfoundcodelistextra.context:=coderecord.context;
     if coderecord.stack.stack<>nil then
     begin
       getmem(formfoundcodelistextra.stack.stack, coderecord.stack.savedsize);
@@ -1268,14 +1252,8 @@ begin
       CopyMemory(formfoundcodelistextra.stack.stack, coderecord.stack.stack, coderecord.stack.savedsize);
     end;
 
-    if coderecord.ipt.log<>nil then
-    begin
-      getmem(formfoundcodelistextra.ipt.log, coderecord.ipt.size);
-      formfoundcodelistextra.ipt.size:=coderecord.ipt.size;
-      copymemory(FormFoundCodeListExtra.ipt.log, coderecord.ipt.log, coderecord.ipt.size);
-    end;
-
     FormFoundCodeListExtra.Show;
+  //  FormFoundCodeListExtra.free;
   end;
 end;
 
@@ -1289,8 +1267,7 @@ begin
   btnOk.caption:=strStop;
 
   setlength(x,0);
-  if loadformposition(self,x) then
-    loadedPosition:=true;
+  loadformposition(self,x);
 
   if length(x)>=1 then
   begin
@@ -1298,13 +1275,10 @@ begin
     setcountwidth:=true;
   end;
 
-  fdebuggerinterfacewatchid:=-1;
+  fdbvmwatchid:=-1;
 
   countsortdirection:=1;
   addresssortdirection:=1;
-
-  seenAddressList:=tmap.Create(ituPtrSize,sizeof(pointer));
-  seenAddressListCS:=TCriticalSection.Create;
 end;
 
 procedure TFoundCodeDialog.FormDeactivate(Sender: TObject);
@@ -1315,6 +1289,7 @@ end;
 procedure TFoundCodeDialog.FormDestroy(Sender: TObject);
 var i: integer;
     cr: Tcoderecord;
+    x: array of integer;
     s: string;
 begin
   stopDBVMWatch();
@@ -1331,19 +1306,17 @@ begin
         exit;
       end;
       cr.formChangedAddresses.Close;
+      freeandnil(cr.formChangedAddresses);
     end;
 
     FoundCodeList.Items[i].data:=nil;
     freeandnil(cr);
   end;
 
+  setlength(x,1);
+  x[0]:=FoundCodeList.Columns[0].Width;
 
-
-  FoundCodeList.Clear;
-  timerEntryInfoUpdate.Enabled:=false;
-
-  freeandnil(seenAddressList);
-  freeandnil(seenAddressListCS);
+  saveformposition(self,x);
 end;
 
 procedure TFoundCodeDialog.FormShow(Sender: TObject);
@@ -1352,13 +1325,6 @@ begin
   begin
     FoundCodeList.Column[0].Width:=max(FoundCodeList.Column[0].Width, FoundCodeList.Canvas.TextWidth('9999'));
     setcountwidth:=true;
-  end;
-
-  if not loadedPosition then
-  begin
-    width:=canvas.TextWidth('XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX');
-    height:=canvas.TextHeight('Q')*20;
-    FoundCodeList.Columns[0].Width:=canvas.TextWidth(' '+FoundCodeList.Columns[0].Caption+' ');
   end;
 end;
 
@@ -1388,36 +1354,12 @@ end;
 
 procedure TFoundCodeDialog.FormClose(Sender: TObject;
   var Action: TCloseAction);
-var
-  x: array of integer;
 begin
-  if miFindWhatAccesses.Checked then
-    miFindWhatAccesses.Click; //unchecks it
-
-
   if btnOK.caption=strStop then
     if debuggerthread<>nil then
       debuggerthread.CodeFinderStop(self);
 
-
-
-  if breakpoint<>nil then
-  begin
-    action:=caHide; //don't free. Only when the breakpoint is fully gone free it
-    dec(pbreakpoint(breakpoint)^.referencecount);
-  end
-  else
-    action:=caFree;
-
-  setlength(x,1);
-  x[0]:=FoundCodeList.Columns[0].Width;
-  saveformposition(self,x);
-
-  try
-    //rename so that the next created dialog can have this name
-    self.name:=self.name+'_tobedeleted'+inttohex(random(65535),4)+inttohex(random(65535),4)+inttohex(random(65535),4)+inttohex(random(65535),4)+'_'+inttohex(GetTickCount64,1);
-  except
-  end;
+  action:=caFree;
 end;
 
 procedure TFoundCodeDialog.btnReplacewithnopsClick(Sender: TObject);
@@ -1442,27 +1384,20 @@ begin
         coderecord:=TcodeRecord(foundcodelist.items[j].data);
         codelength:=coderecord.size;
         //add it to the codelist
-
-        try
-          advancedoptions.AddToCodeList(coderecord.address,coderecord.size,false, foundcodelist.SelCount>1);
-        except
-          //already in the list, undo
-        end;
-
-        for i:=0 to AdvancedOptions.count-1 do
+        if advancedoptions.AddToCodeList(coderecord.address,coderecord.size,true, foundcodelist.SelCount>1) then
         begin
-          advancedoptions.lvCodelist.ClearSelection;
-          if symhandler.getAddressFromName(AdvancedOptions.entries[i].code.symbolname,false)=coderecord.address then
-          begin
-            advancedoptions.lvCodelist.selected:=advancedoptions.lvCodelist.Items[i];
-            advancedoptions.lvCodelist.Items[i].Selected:=true;
-            if AdvancedOptions.entries[i].code.changed then
-              advancedoptions.miRestoreWithOriginalClick(advancedoptions.miRestoreWithOriginal)
-            else
-              advancedoptions.miReplaceWithNopsClick(advancedoptions.miReplaceWithNops);
-          end;
-        end;
+          setlength(nops,codelength);
+          for i:=0 to codelength-1 do
+            nops[i]:=$90;  // $90=nop
 
+
+          zeromemory(@mbi,sizeof(mbi));
+
+
+          RewriteCode(processhandle,coderecord.address,@nops[0],codelength);
+
+
+        end;
       end;
     end;
   end;
@@ -1642,20 +1577,10 @@ begin
     begin
       coderecord:=TCodeRecord(foundcodelist.items[i].data);
       if coderecord.formChangedAddresses<>nil then
-      begin
-        coderecord.formChangedAddresses.Close; //brings reference count to 0, so will autodestroy
-        coderecord.formChangedAddresses:=nil;
-      end;
+        freeandnil(coderecord.formChangedAddresses);
     end;
 
   end;
-end;
-
-procedure TFoundCodeDialog.miFindWhatCodeAccessesClick(Sender: TObject);
-var a: ptruint;
-begin
-  if foundcodelist.ItemIndex<>-1 then
-    MemoryBrowser.findWhatthisCodeAccesses(TcodeRecord(foundcodelist.items[foundcodelist.itemindex].data).address);
 end;
 
 function TFoundCodeDialog.getSelection:string;
@@ -1690,7 +1615,6 @@ begin
   Showthisaddressinthedisassembler1.enabled:=foundcodelist.itemindex<>-1;
   Addtothecodelist1.enabled:=foundcodelist.selcount>0;
   MoreInfo1.Enabled:=foundcodelist.itemindex<>-1;
-  miFindWhatCodeAccesses.enabled:=foundcodelist.itemindex<>-1;
 
   Copyselectiontoclipboard1.enabled:=foundcodelist.selcount>0;
   miSaveTofile.enabled:=Copyselectiontoclipboard1.Enabled;
@@ -1701,38 +1625,22 @@ begin
   clipboard.AsText:=getSelection;
 end;
 
-procedure TFoundCodeDialog.timerEntryInfoUpdateTimer(Sender: TObject);
+procedure TFoundCodeDialog.timerAddressStringLookupTimer(Sender: TObject);
 var
   i: integer;
   starttime: qword;
   c: FoundCodeUnit.TCodeRecord;
-  updateAddressString: boolean;
-
-  news: string;
 begin
   starttime:=GetTickCount64;
-  updateAddressString:=true;
   for i:=0 to foundcodelist.Items.Count-1 do
   begin
     c:=FoundCodeUnit.TCodeRecord(foundcodelist.items[i].data);
-    if c<>nil then
-    begin
-      if updateAddressString and (c.addressString='') then
-        c.addressString:=symhandler.getNameFromAddress(c.address);
+    if c.addressString='' then
+      c.addressString:=symhandler.getNameFromAddress(c.address);
 
-      if gettickcount64-starttime>250 then updateAddressString:=false; //next time better
 
-      if miFindWhatAccesses.checked or (TCodeRecord(foundcodelist.Items[i].data).diffcount<>0) then
-        news:=inttostr(c.hitcount)+' ('+inttostr(TCodeRecord(foundcodelist.Items[i].data).diffcount)+')'
-      else
-        news:=inttostr(c.hitcount);
-
-      if FoundcodeList.items[i].caption<>news then
-        FoundcodeList.items[i].caption:=news;
-
-    end;
+    if gettickcount64-starttime>250 then break; //next time better
   end;
-
 end;
 
 initialization

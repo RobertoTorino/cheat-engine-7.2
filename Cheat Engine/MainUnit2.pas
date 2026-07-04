@@ -1,7 +1,6 @@
 unit MainUnit2;
 
 {$MODE Delphi}
-{$MACRO ON}
 
 //this unit is used by both the network client and the main program (USERINTERFACE)
 
@@ -16,50 +15,30 @@ uses
      {$endif}
      dialogs,forms,classes,LCLIntf, LCLProc, sysutils,registry,ComCtrls, menus,
      formsettingsunit, cefuncproc,AdvancedOptionsUnit, MemoryBrowserFormUnit,
-     memscan,plugin, hotkeyhandler,frmProcessWatcherUnit, NewKernelHandler,
-     debuggertypedefinitions, commonTypeDefs, betterControls;
+     memscan,plugin, hotkeyhandler,frmProcessWatcherUnit, newkernelhandler,
+     debuggertypedefinitions, commonTypeDefs;
 
-const
-  ceversion=7.51;
-  strVersionPart='7.5.1';
-{$ifdef altname}  //i'd use $MACRO ON but fpc bugs out
-  strCheatEngine='Runtime Modifier'; //if you change this, also change it in first.pas
-  strCheatTable='Code Table';   //because it contains code.... duh.....
-  strCheatTableLower='code table';
-  strCheat='Modification';
-  strTrainer='Modifier';
-  strTrainerLower='modifier';
-  strMyCheatTables='My Mod Tables';
-  strSpeedHack='Speedmodifier';
-{$else}
-  strCheatEngine='Cheat Engine';
-  strCheatTable='Cheat Table';
-  strCheatTableLower='cheat table';
-  strCheat='Cheat';
-  strTrainer='Trainer';
-  strTrainerLower='trainer';
-  strMyCheatTables='My Cheat Tables';
-  strSpeedHack='Speedhack';
-{$endif}
+const ceversion=7.2;
 
 resourcestring
-  cename = strCheatEngine;
-  cenamewithversion = strCheatEngine+' '+strVersionPart;
-  rsCheatEngine = strCheatEngine;
+  cename = 'Cheat Engine 7.2';
   rsPleaseWait = 'Please Wait!';
 
 procedure UpdateToolsMenu;
-procedure LoadSettingsFromRegistry(skipPlugins: boolean=false; skipkernelapply: boolean=false);
+procedure LoadSettingsFromRegistry(skipPlugins: boolean=false);
 procedure initcetitle;
+
+
 
 
 const beta=''; //empty this for a release
 
 var
   CEnorm:string;
-  CEVersionName: string;
-
-
+  CERegion: string;
+  CESearch: string;
+  CERegionSearch: string;
+  CEWait: string;
 
 resourcestring
   strStart='Start';
@@ -120,8 +99,7 @@ implementation
 
 
 uses KernelDebugger,mainunit, DebugHelper, CustomTypeHandler, ProcessList, Globals,
-     frmEditHistoryUnit, DBK32functions, frameHotkeyConfigUnit, UnexpectedExceptionsHelper,
-     TypInfo, StdCtrls, symbolsync;
+     frmEditHistoryUnit, DBK32functions, frameHotkeyConfigUnit, UnexpectedExceptionsHelper;
 
 procedure UpdateToolsMenu;
 var i: integer;
@@ -148,7 +126,7 @@ begin
   end;
 end;
 
-procedure LoadSettingsFromRegistry(skipPlugins: boolean=false; skipkernelapply: boolean=false);
+procedure LoadSettingsFromRegistry(skipPlugins: boolean=false);
 var reg : TRegistry;
     i,j: integer;
     temphotkeylist: array [0..cehotkeycount-1] of commontypedefs.tkeycombo;
@@ -167,19 +145,12 @@ begin
     reg:=Tregistry.Create;
     try
       Reg.RootKey := HKEY_CURRENT_USER;
-      if Reg.OpenKey('\Software\'+strCheatEngine,false) then
+      if Reg.OpenKey('\Software\Cheat Engine',false) then
       begin
 
         with formsettings do
         begin
           LoadingSettingsFromRegistry:=true;
-
-          if reg.ValueExists('RunAsAdmin') then
-            cbAlwaysAttemptToLaunchAsAdmin.Checked:=reg.ReadBool('RunAsAdmin');
-
-
-          if reg.ValueExists('Disable DarkMode Support') then
-            cbDisableDarkModeSupport.checked:=reg.ReadBool('Disable DarkMode Support');
 
           if reg.ValueExists('Saved Stacksize') then
             savedStackSize:=reg.ReadInteger('Saved Stacksize');
@@ -206,22 +177,22 @@ begin
             miLuaExecSignedOnly.checked:=true;
 
 
-          if reg.ValueExists('AllByte') then cbAllByte.checked:=reg.readBool('AllByte') else cbAllByte.checked:=false;
-          if reg.ValueExists('AllWord') then cbAllWord.checked:=reg.readBool('AllWord') else cbAllWord.checked:=false;
-          if reg.ValueExists('AllDWord') then cbAllDword.checked:=reg.readBool('AllDWord') else cbAllDWord.checked:=true;
-          if reg.ValueExists('AllQWord') then cbAllQword.checked:=reg.readBool('AllQWord') else cbAllQWord.checked:=false;
-          if reg.ValueExists('AllFloat') then cbAllSingle.checked:=reg.readBool('AllFloat') else cbAllSingle.checked:=true;
-          if reg.ValueExists('AllDouble') then cbAllDouble.checked:=reg.readBool('AllDouble') else cbAllDouble.checked:=true;
-          if reg.ValueExists('AllCustom') then cbAllCustom.checked:=reg.readBool('AllCustom') else cbAllCustom.checked:=false;
+          if reg.ValueExists('AllByte') then cgAllTypes.checked[0]:=reg.readBool('AllByte');
+          if reg.ValueExists('AllWord') then cgAllTypes.checked[1]:=reg.readBool('AllWord');
+          if reg.ValueExists('AllDWord') then cgAllTypes.checked[2]:=reg.readBool('AllDWord');
+          if reg.ValueExists('AllQWord') then cgAllTypes.checked[3]:=reg.readBool('AllQWord');
+          if reg.ValueExists('AllFloat') then cgAllTypes.checked[4]:=reg.readBool('AllFloat');
+          if reg.ValueExists('AllDouble') then cgAllTypes.checked[5]:=reg.readBool('AllDouble');
+          if reg.ValueExists('AllCustom') then cgAllTypes.checked[6]:=reg.readBool('AllCustom');
 
           ScanAllTypes:=[];
-          if cbAllByte.checked then ScanAllTypes:=ScanAllTypes+[vtByte];
-          if cbAllWord.checked then ScanAllTypes:=ScanAllTypes+[vtWord];
-          if cbAllDword.checked then ScanAllTypes:=ScanAllTypes+[vtDword];
-          if cbAllQword.checked then ScanAllTypes:=ScanAllTypes+[vtQword];
-          if cbAllSingle.checked then ScanAllTypes:=ScanAllTypes+[vtSingle];
-          if cbAllDouble.checked then ScanAllTypes:=ScanAllTypes+[vtDouble];
-          if cbAllCustom.checked then ScanAllTypes:=ScanAllTypes+[vtCustom];
+          if cgAllTypes.checked[0] then ScanAllTypes:=ScanAllTypes+[vtByte];
+          if cgAllTypes.checked[1] then ScanAllTypes:=ScanAllTypes+[vtWord];
+          if cgAllTypes.checked[2] then ScanAllTypes:=ScanAllTypes+[vtDword];
+          if cgAllTypes.checked[3] then ScanAllTypes:=ScanAllTypes+[vtQword];
+          if cgAllTypes.checked[4] then ScanAllTypes:=ScanAllTypes+[vtSingle];
+          if cgAllTypes.checked[5] then ScanAllTypes:=ScanAllTypes+[vtDouble];
+          if cgAllTypes.checked[6] then ScanAllTypes:=ScanAllTypes+[vtCustom];
 
 
           if reg.ValueExists('Show all windows on taskbar') then
@@ -267,7 +238,7 @@ begin
           if reg.ValueExists('Time between hotkeypress') then
             hotkeyIdletime:=reg.ReadInteger('Time between hotkeypress')
           else
-            hotkeyIdletime:=350;
+            hotkeyIdletime:=100;
 
           frameHotkeyConfig.edtKeypollInterval.text:=inttostr(hotkeyPollInterval);
           frameHotkeyConfig.edtHotkeyDelay.text:=inttostr(hotkeyIdletime);
@@ -345,11 +316,11 @@ begin
             {$endif}
 
 
-          if reg.ValueExists('Show '+strCheatEngine+' Hotkey') then
+          if reg.ValueExists('Show Cheat Engine Hotkey') then
             {$ifdef windows}
-            reg.ReadBinaryData('Show '+strCheatEngine+' Hotkey',temphotkeylist[1][0],10);
+            reg.ReadBinaryData('Show Cheat Engine Hotkey',temphotkeylist[1][0],10);
             {$else}
-            HexToBin(pchar(reg.ReadString('Show '+strCheatEngine+' Hotkey')),pchar(@temphotkeylist[1][0]),10);
+            HexToBin(pchar(reg.ReadString('Show Cheat Engine Hotkey')),pchar(@temphotkeylist[1][0]),10);
             {$endif}
 
           if reg.ValueExists('Pause process Hotkey') then
@@ -637,7 +608,7 @@ begin
 
 
           if reg.ValueExists('Center on popup') then
-            formsettings.frameHotkeyConfig.cbCenterOnPopup.checked:=reg.readbool('Center on popup');
+            formsettings.cbCenterOnPopup.checked:=reg.readbool('Center on popup');
 
           if reg.ValueExists('Update interval') then
             mainform.updatetimer.Interval:=reg.readInteger('Update interval');
@@ -662,28 +633,6 @@ begin
 
           if reg.ValueExists('Always AutoAttach') then
             cbAlwaysAutoAttach.checked:=reg.readbool('Always AutoAttach');
-
-          if reg.ValueExists('Skip PDB') then
-            cbSkipPDB.checked:=reg.readBool('Skip PDB');
-
-          skippdb:=cbSkipPDB.checked;
-
-          if reg.valueExists('Use Intel PT For Debug') then
-            cbUseIntelPT.checked:=reg.readBool('Use Intel PT For Debug');
-          useintelptfordebug:=cbUseIntelPT.checked;
-
-          if reg.valueExists('Hide IPT Capability') then
-            cbHideIPTCapability.checked:=reg.readbool('Hide IPT Capability');
-          hideiptcapability:=cbHideIPTCapability.checked;
-
-
-          if reg.ValueExists('Log IPT buffers inside FindWhat results') then
-            cbRecordIPTForFindWhatRoutines.checked:=reg.ReadBool('Log IPT buffers inside FindWhat results');
-          inteliptlogfindwhatroutines:=cbRecordIPTForFindWhatRoutines.checked;
-
-          if reg.ValueExists('Max IPT Size') then
-             cbIPTTraceSize.ItemIndex:=reg.readinteger('Max IPT Size');
-          maxiptconfigsize:=cbIPTTraceSize.ItemIndex;
 
 
           if reg.ValueExists('Replace incomplete opcodes with NOPS') then
@@ -751,9 +700,6 @@ begin
             cbProcessIcons.Checked:=reg.ReadBool('Get process icons');
           GetProcessIcons:=cbProcessIcons.Checked;
 
-          if reg.ValueExists('Ask to clear list on process opening') then
-            cbAskToClearListOnOpen.Checked:=reg.ReadBool('Ask to clear list on process opening');
-
           if reg.ValueExists('Pointer appending') then
             cbOldPointerAddMethod.checked:=reg.ReadBool('Pointer appending');
 
@@ -768,35 +714,6 @@ begin
 
           Skip_PAGE_WRITECOMBINE:=cbSkip_PAGE_WRITECOMBINE.Checked;
 
-          if reg.ValueExists('Save memoryregion scansettings') then
-          begin
-            cbSaveMemoryregionScanSettings.checked:=reg.readbool('Save memoryregion scansettings');
-            if cbSaveMemoryregionScanSettings.checked then
-            begin
-              //load from the registry if available
-              if reg.ValueExists('scan CopyOnWrite') then
-              begin
-                i:=reg.ReadInteger('scan CopyOnWrite');
-                mainform.cbCopyOnWrite.State:=TCheckBoxState(i);
-              end;
-
-              if reg.ValueExists('scan Executable') then
-              begin
-                i:=reg.ReadInteger('scan Executable');
-                mainform.cbExecutable.State:=TCheckBoxState(i);
-              end;
-
-              if reg.ValueExists('scan Writable') then
-              begin
-                i:=reg.ReadInteger('scan Writable');
-                mainform.cbWritable.State:=TCheckBoxState(i);
-              end;
-
-              if reg.ValueExists('scan PresentMemoryOnly') then
-                mainform.cbPresentMemoryOnly.checked:=reg.ReadBool('scan PresentMemoryOnly');
-
-            end;
-          end;
 
           if reg.ValueExists('Pause when scanning on by default') then
             cbPauseWhenScanningOnByDefault.Checked:=reg.readbool('Pause when scanning on by default');
@@ -810,7 +727,7 @@ begin
 
 
           if reg.ValueExists('Hide all windows') then
-            frameHotkeyConfig.cbHideAllWindows.Checked:=reg.ReadBool('Hide all windows');
+            cbHideAllWindows.Checked:=reg.ReadBool('Hide all windows');
 
           if reg.ValueExists('Really hide all windows') then
             temphideall:=reg.ReadBool('Really hide all windows');
@@ -830,63 +747,20 @@ begin
           Scan_MEM_IMAGE:=cbMemImage.Checked;
           Scan_MEM_MAPPED:=cbMemMapped.Checked;
 
-
-          if reg.ValueExists('SymbolSync') then
-            cbSynchronizeSymbols.checked:=reg.ReadBool('SymbolSync');
-
-          if reg.ValueExists('SymbolSync_ClearSymbolsOnNewProcess') then
-            cbClearSymbolsOnProcessOpen.Checked:=reg.readbool('SymbolSync_ClearSymbolsOnNewProcess');
-
-          if reg.ValueExists('SymbolSync_DontDeleteSymbols') then
-            cbDontDeleteSymbols.Checked:=reg.readbool('SymbolSync_DontDeleteSymbols');
-
-          if reg.ValueExists('SymbolSync_SynchronizePeriodically') then
-            cbSymbolSyncInterval.checked:=reg.ReadBool('SymbolSync_SynchronizePeriodically');
-
-          if reg.ValueExists('SymbolSync_SynchronizeInterval') then
-            symsync_Interval:=reg.ReadInteger('SymbolSync_SynchronizeInterval')
-          else
-            symsync_Interval:=10;
-
-          syncsymbols:=cbSynchronizeSymbols.checked;
-          symsync_ClearSymbolListWhenOpeningADifferentProcess:=cbClearSymbolsOnProcessOpen.checked;
-          symsync_DontDeleteSymbolsWhenSynchronizing:=cbDontDeleteSymbols.checked;
-
-          if cbSymbolSyncInterval.checked then
-          begin
-            if syncsymbols then
-              EnableSymbolSyncThread
-            else
-              DisableSymbolSyncThread;
-          end
-          else
-            DisableSymbolSyncThread;
-
-
-
           if reg.ValueExists('Can Step Kernelcode') then
             cbCanStepKernelcode.checked:=reg.ReadBool('Can Step Kernelcode');
 
 
 
+          try cbKernelQueryMemoryRegion.checked:=reg.ReadBool('Use dbk32 QueryMemoryRegionEx'); except end;
+          try cbKernelReadWriteProcessMemory.checked:=reg.ReadBool('Use dbk32 ReadWriteProcessMemory'); except end;
+          try cbKernelOpenProcess.checked:=reg.ReadBool('Use dbk32 OpenProcess'); except end;
 
 
-          if reg.ValueExists('Unrandomizer: default value') then
-            unrandomizersettings.defaultreturn:=reg.ReadInteger('Unrandomizer: default value');
-
-          if reg.ValueExists('Unrandomizer: incremental') then
-            unrandomizersettings.incremental:=reg.ReadBool('Unrandomizer: incremental');
+          try unrandomizersettings.defaultreturn:=reg.ReadInteger('Unrandomizer: default value'); except end;
+          try unrandomizersettings.incremental:=reg.ReadBool('Unrandomizer: incremental'); except end;
 
           {$ifdef windows}
-          if reg.ValueExists('Use dbk32 QueryMemoryRegionEx') then
-            cbKernelQueryMemoryRegion.checked:=reg.ReadBool('Use dbk32 QueryMemoryRegionEx');
-
-          if reg.ValueExists('Use dbk32 ReadWriteProcessMemory') then
-            cbKernelReadWriteProcessMemory.checked:=reg.ReadBool('Use dbk32 ReadWriteProcessMemory');
-
-          if reg.ValueExists('Use dbk32 OpenProcess') then
-            cbKernelOpenProcess.checked:=reg.ReadBool('Use dbk32 OpenProcess');
-
           if reg.ValueExists('ModuleList as Denylist') then
             DenyList:=reg.ReadBool('ModuleList as Denylist')
           else
@@ -944,81 +818,16 @@ begin
             cbKdebug.checked:=reg.ReadBool('Use Kernel Debugger');
           {$endif}
 
-          if reg.ValueExists('Use GDBServer Debugger') then
-            cbUseGDBServer.checked:=reg.ReadBool('Use GDBServer Debugger');
-
-          if reg.ValueExists('Launch GDB server') then
-            cbLaunchGDBServer.checked:=reg.ReadBool('Launch GDB server');
-
-          if reg.ValueExists('GDBServer launch command') then
-            edtGDBServerCommand.text:=reg.ReadString('GDBServer launch command');
-
-          if reg.ValueExists('GDBPort') then
-            edtGDBPort.text:=reg.ReadString('GDBPort');
-
-          if reg.ValueExists('GDBWriteCode') then
-            cbGDBWriteCode.checked:=reg.ReadBool('GDBWriteCode');
-
-
-          {$ifdef windows}
-
-          if reg.ValueExists('Use DBVM Debugger') then
-            cbUseDBVMDebugger.checked:=reg.ReadBool('Use DBVM Debugger');
-
-          if reg.ValueExists('DBVMBP Trigger COW') then
-            dbvmbp_options.TriggerCOW:=reg.ReadBool('DBVMBP Trigger COW')
-          else
-            dbvmbp_options.TriggerCOW:=true;
-
-          if reg.ValueExists('DBVMBP This Process Only') then
-            dbvmbp_options.TargetedProcessOnly:=reg.ReadBool('DBVMBP This Process Only');
-
-          if reg.ValueExists('DBVMBP Kernelmode') then
-            dbvmbp_options.KernelmodeBreaks:=reg.readBool('DBVMBP Kernelmode')
-          else
-            dbvmbp_options.KernelmodeBreaks:=true;
-
-
-
-          cbDBVMDebugTriggerCOW.checked:=dbvmbp_options.TriggerCOW;
-          cbDBVMDebugTargetedProcessOnly.checked:=dbvmbp_options.TargetedProcessOnly;
-          cbDBVMDebugKernelmodeBreaks.checked:=dbvmbp_options.KernelmodeBreaks;
-
-          {$endif}
-
           if reg.ValueExists('Wait After Gui Update') then
             waitafterguiupdate:=reg.ReadBool('Wait After Gui Update');
           cbWaitAfterGuiUpdate.checked:=waitafterguiupdate;
 
-
           {$ifdef darwin}
-          if reg.ValueExists('UseMacDebugger') then
-            cbUseMacDebugger.checked:=reg.readBool('UseMacDebugger');
-
-          if reg.ValueExists('UseRosettaDebugserver') then
-            cbUseRosettaDebugserver.checked:=reg.ReadBool('UseRosettaDebugserver');
-
-          if reg.ValueExists('AttachDebuggerToRosettaOnProcessOpen') then
-            cbAttachDebuggerToRosettaOnProcessOpen.checked:=reg.ReadBool('AttachDebuggerToRosettaOnProcessOpen');
-
-          if reg.ValueExists('AskToAttachToRosetta') then
-            cbAskToAttachToRosetta.checked:=reg.ReadBool('AskToAttachToRosetta');
-
-          if reg.ValueExists('RosettaDebugserverLaunchCommand') then
-            edtRosettaDebugserverLaunchCommand.text:=reg.ReadString('RosettaDebugserverLaunchCommand');
-
-          if reg.ValueExists('RosettaDebugserverPort') then
-            edtRosettaDebugserverPort.text:=reg.ReadString('RosettaDebugserverPort');
-
-
-
+          cbUseMacDebugger.checked:=true;
 
           if reg.ValueExists('Use TaskLevel debugger') then
             useTaskLevelDebug:=reg.ReadBool('Use TaskLevel debugger');
 
-
-          if not (cbUseMacDebugger.checked or cbUseGDBServer.checked) then
-            cbUseMacDebugger.checked:=true;
           {$endif}
 
 
@@ -1056,12 +865,9 @@ begin
 
           {$ifdef windows}
 
-          if skipkernelapply=false then
-          begin
-            if cbKernelQueryMemoryRegion.checked then UseDBKQueryMemoryRegion else DontUseDBKQueryMemoryRegion;
-            if cbKernelReadWriteProcessMemory.checked then UseDBKReadWriteMemory else DontUseDBKReadWriteMemory;
-            if cbKernelOpenProcess.Checked then UseDBKOpenProcess else DontUseDBKOpenProcess;
-          end;
+          if cbKernelQueryMemoryRegion.checked then UseDBKQueryMemoryRegion else DontUseDBKQueryMemoryRegion;
+          if cbKernelReadWriteProcessMemory.checked then UseDBKReadWriteMemory else DontUseDBKReadWriteMemory;
+          if cbKernelOpenProcess.Checked then UseDBKOpenProcess else DontUseDBKOpenProcess;
 
           if cbProcessWatcher.Checked then
             if (frmProcessWatcher=nil) then //probably yes
@@ -1173,7 +979,7 @@ begin
 
       {$ifndef net}
       formsettings.lvtools.Clear;
-      if Reg.OpenKey('\Software\'+strCheatEngine+'\Tools',false) then
+      if Reg.OpenKey('\Software\Cheat Engine\Tools',false) then
       begin
         names:=TStringList.create;
         try
@@ -1211,7 +1017,7 @@ begin
 
 
 
-      if (not skipPlugins) and (Reg.OpenKey('\Software\'+strCheatEngine+'\Plugins'{$ifdef cpu64}+'64'{$else}+'32'{$endif},false)) then
+      if (not skipPlugins) and (Reg.OpenKey('\Software\Cheat Engine\Plugins'{$ifdef cpu64}+'64'{$else}+'32'{$endif},false)) then
       begin
         names:=TStringList.create;
         try
@@ -1263,8 +1069,7 @@ begin
   {$ifdef net}
   MemoryBrowser.Kerneltools1.visible:=false;
   {$else}
-  MemoryBrowser.Kerneltools1.Enabled:={$ifdef windows}DBKLoaded or isRunningDBVM{$else}false{$endif};
-  MemoryBrowser.miCR3Switcher.visible:=MemoryBrowser.Kerneltools1.Enabled;
+  MemoryBrowser.Kerneltools1.Enabled:={$ifdef windows}DBKLoaded{$else}false{$endif};
   {$endif}
 
 
@@ -1297,13 +1102,10 @@ begin
   Application.Title:=CENorm;
 
 
-
-  {$ifdef darwin}
-  {$ifdef CPUX86_64}
-  if MacIsArm64 then
-    CENorm:=CENorm+' on Rosetta';
-  {$endif}
-  {$endif}
+  CERegion:=cenorm+' - '+rsPleaseWait;
+  CESearch:=CERegion;
+  CERegionSearch:= CERegion;
+  CEWait:= ceregion;
   mainform.Caption:=CENorm;
 end;
 

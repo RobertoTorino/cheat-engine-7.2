@@ -48,12 +48,6 @@ begin
   try
     readBytesFromTable(L, 1,o,ct.bytesize);
 
-    if ct.scriptUsesString then
-    begin
-      lua_pushstring(L,pchar(ct.ConvertDataToString(o,a)));
-      result:=1;
-    end
-    else
     if ct.scriptUsesFloat then
     begin
       lua_pushnumber(L, ct.ConvertDataToFloat(o,a));
@@ -72,7 +66,6 @@ end;
 function customtype_valueToByteTable(L: Plua_State): integer; cdecl;
 var
   ct: TCustomType;
-  s: string;
   f: single;
   i: integer absolute f;
   a: ptruint;
@@ -91,12 +84,6 @@ begin
 
   getmem(o,ct.bytesize);
   try
-    if ct.scriptUsesString then
-    begin
-      s:=Lua_ToString(L,1);
-      ct.ConvertStringToData(pchar(s),o,a);
-    end
-    else
     if ct.scriptUsesFloat then
     begin
       f:=lua_tonumber(L, 1);

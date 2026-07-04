@@ -4,15 +4,10 @@ unit speedhack2;
 
 interface
 
-uses Classes,LCLIntf, SysUtils, NewKernelHandler,CEFuncProc, symbolhandler, symbolhandlerstructs,  lua, lauxlib, lualib,
+uses Classes,LCLIntf, SysUtils, NewKernelHandler,CEFuncProc, symbolhandler, symbolhandlerstructs,
      autoassembler, dialogs,Clipbrd, commonTypeDefs, controls{$ifdef darwin},macport, FileUtil{$endif};
 
-type
-  TSpeedHackSetSpeedEvent=function(speed: single; out r: boolean; out error: string): boolean of object;
-  TSpeedHackActivateEvent=function(out r: boolean; out error: string): boolean of object;
-
-
-  TSpeedhack=class
+type TSpeedhack=class
   private
     fProcessId: dword;
     initaddress: ptrUint;
@@ -27,67 +22,20 @@ type
 
 var speedhack: TSpeedhack;
 
-function registerSpeedhackCallbacks(OnActivate: TSpeedHackActivateEvent; OnSetSpeed: TSpeedHackSetSpeedEvent): integer;
-procedure unregisterSpeedhackCallbacks(id: integer);
-
 implementation
 
-uses frmAutoInjectUnit, networkInterface, networkInterfaceApi, ProcessHandlerUnit,
-     Globals, luahandler, luacaller;
+uses frmAutoInjectUnit, networkInterface, networkInterfaceApi, ProcessHandlerUnit, Globals;
 
 resourcestring
   rsFailureEnablingSpeedhackDLLInjectionFailed = 'Failure enabling speedhack. (DLL injection failed)';
   rsFailureConfiguringSpeedhackPart = 'Failure configuring speedhack part';
   rsFailureSettingSpeed = 'Failure setting speed';
 
-type
-  TSpeedhackCallback=record
-    OnActivate: TSpeedHackActivateEvent;
-    OnSetSpeed: TSpeedHackSetSpeedEvent;
-  end;
-
-var
-  speedhackCallbacks: array of TSpeedhackCallback;
-
-
-function registerSpeedhackCallbacks(OnActivate: TSpeedHackActivateEvent; OnSetSpeed: TSpeedHackSetSpeedEvent): integer;
-var i: integer;
-begin
-  for i:=0 to length(speedhackCallbacks)-1 do
-  begin
-    if not (assigned(speedhackCallbacks[i].OnActivate) or assigned(speedhackCallbacks[i].OnSetSpeed)) then
-    begin
-      speedhackCallbacks[i].OnActivate:=OnActivate;
-      speedhackCallbacks[i].OnSetSpeed:=OnSetSpeed;
-      exit(i);
-    end;
-  end;
-
-  result:=length(speedhackCallbacks);
-  setlength(speedhackCallbacks, result+1);
-
-  speedhackCallbacks[result].OnActivate:=OnActivate;
-  speedhackCallbacks[result].OnSetSpeed:=OnSetSpeed;
-end;
-
-procedure unregisterSpeedhackCallbacks(id: integer);
-begin
-  if id<length(speedhackCallbacks) then
-  begin
-    CleanupLuaCall(TMethod(speedhackCallbacks[id].OnActivate));
-    CleanupLuaCall(TMethod(speedhackCallbacks[id].OnSetSpeed));
-    speedhackCallbacks[id].OnActivate:=nil;
-    speedhackCallbacks[id].OnSetSpeed:=nil;
-  end;
-end;
-
-
-
 constructor TSpeedhack.create;
 var i: integer;
     script: tstringlist;
-
-    disableinfo: TDisableInfo;
+    AllocArray: TCEAllocArray;
+    exceptionlist: TCEExceptionListArray;
     x: ptrUint;
 //      y: dword;
     a,b: ptrUint;
@@ -107,31 +55,7 @@ var i: integer;
 
     HookMachAbsoluteTime: boolean;
 
-    nokernelbase: boolean=false;
-    NoGetTickCount: boolean=false;
-    NoQPC: boolean=false;
-    NoGetTickCount64: boolean=false;
-
-    r: boolean;
-    error: string;
-
 begin
-  for i:=0 to length(speedhackCallbacks)-1 do
-  begin
-    if assigned(speedhackCallbacks[i].OnActivate) then
-    begin
-      if speedhackCallbacks[i].OnActivate(r,error) then
-      begin
-        //it got handled
-        if r=false then
-          raise exception.create(error);
-
-        fprocessid:=processhandlerunit.processid;
-        exit;
-      end;
-    end;
-  end;
-
   initaddress:=0;
 
   if processhandler.isNetwork then
@@ -173,20 +97,13 @@ begin
 
       symhandler.waitforsymbolsloaded(true, 'kernel32.dll'); //speed it up (else it'll wait inside the symbol lookup of injectdll)
 
-      OutputDebugString('Speedhack: calling waitForExports');
       symhandler.waitForExports;
-      OutputDebugString('Speedhack: waitForExports returned');
       symhandler.getAddressFromName('speedhackversion_GetTickCount',false,e);
       if e then
       begin
-        OutputDebugString('Speedhack: speedhackversion_GetTickCount not found. Injecting DLL');
         injectdll(CheatEngineDir+fname);
-
-        OutputDebugString('Speedhack: after dll injection. Waiting for symbols reinitialized');
         symhandler.reinitialize;
-        symhandler.waitforsymbolsloaded(true);
-        OutputDebugString('Speedhack: after waitforsymbolsloaded. Calling symhandler.waitForExports');
-        symhandler.waitForExports;
+        symhandler.waitforsymbolsloaded(true)
       end;
       {$endif}
 
@@ -200,12 +117,11 @@ begin
     end;
   end;
 
-
+       
   script:=tstringlist.Create;
   try
     if processhandler.isNetwork then
     begin
-      OutputDebugString('Speedhack: networked');
       //linux
 
 
@@ -247,11 +163,11 @@ begin
       if symhandler.getAddressFromName('vdso.clock_gettime', true,err)>0 then //prefered
         fname:='vdso.clock_gettime'
       else
-      if symhandler.getAddressFromName('libc.clock_gettime', true, err)>0 then //seen this on android
-        fname:='libc.clock_gettime'
-      else
       if symhandler.getAddressFromName('librt.clock_gettime', true, err)>0 then //secondary
         fname:='librt.clock_gettime'
+      else
+      if symhandler.getAddressFromName('libc.clock_gettime', true, err)>0 then //seen this on android
+        fname:='libc.clock_gettime'
       else
       if symhandler.getAddressFromName('clock_gettime', true, err)>0 then //really nothing else ?
         fname:='clock_gettime'
@@ -259,7 +175,7 @@ begin
         fname:=''; //give up
 
 
-      if fname<>'' then //hook clock_gettime
+      if fname<>'' then //hook gettimeofday
       begin
         //check if it already has a a speedhack running
         a:=symhandler.getAddressFromName('real_clock_gettime');
@@ -271,7 +187,7 @@ begin
           generateAPIHookScript(script, fname, 'new_clock_gettime', 'real_clock_gettime');
 
           try
-           // Clipboard.AsText:=script.text;
+            //Clipboard.AsText:=script.text;
             autoassemble(script,false);
           except
           end;
@@ -282,10 +198,8 @@ begin
     else
     begin
       //local
-      OutputDebugString('Speedhack: local');
 
       {$ifdef darwin}
-      OutputDebugString('Speedhack: mac');
       HookMachAbsoluteTime:=false;
       if speedhack_HookMachAbsoluteTime then
       begin
@@ -340,72 +254,38 @@ begin
       {$endif}
 
       {$ifdef windows}
-      OutputDebugString('Speedhack: windows');
-      noKernelBase:=false; //assume it present
-
-
-      //check if it already has a a speedhack script running
-
-      fname:='kernelbase.GetTickCount';
-      a:=symhandler.getAddressFromName(fname, true,e);
-      if e then
-      begin
-        noKernelBase:=true;
-        OutputDebugString('No kernelbase.GetTickCount');
-
-        fname:='kernel32.GetTickCount';
-        a:=symhandler.getAddressFromName(fname, true,e);
-
-        if e then
-        begin
-          outputdebugstring('No kernel32.GetTickCount');
-          fname:='GetTickCount';
-          a:=symhandler.getAddressFromName(fname, true,e);
-
-          if e then
-          begin
-            NoGetTickCount:=true;
-            outputdebugstring('No GetTickCount');
-          end;
-        end;
-      end;
 
       if processhandler.is64bit then
-        script.Add('alloc(init,512,'+fname+')')
+        script.Add('alloc(init,512, GetTickCount)')
       else
         script.Add('alloc(init,512)');
+      //check if it already has a a speedhack script running
 
-      if NoGetTickCount=false then
-      begin
-        OutputDebugString('Speedhack: hooking '+fname);
-        a:=symhandler.getAddressFromName('realgettickcount', true) ;
-        b:=0;
-        readprocessmemory(processhandle,pointer(a),@b,processhandler.pointersize,x);
-        if b<>0 then //already configured
-          generateAPIHookScript(script, fname, 'speedhackversion_GetTickCount')
-        else
-          generateAPIHookScript(script, fname, 'speedhackversion_GetTickCount', 'realgettickcount');
-      end;
+      a:=symhandler.getAddressFromName('realgettickcount', true) ;
+      b:=0;
+      readprocessmemory(processhandle,pointer(a),@b,processhandler.pointersize,x);
+      if b<>0 then //already configured
+        generateAPIHookScript(script, 'GetTickCount', 'speedhackversion_GetTickCount')
+      else
+        generateAPIHookScript(script, 'GetTickCount', 'speedhackversion_GetTickCount', 'realgettickcount');
+
+      //if ssCtrl in GetKeyShiftState then //debug code
+      //  Clipboard.AsText:=script.text;
       {$endif}
 
       try
-        disableinfo:=TDisableInfo.create;
-        try
-          OutputDebugString('Speedhack: init1');
-          if autoassemble(script,false,true,false,false,disableinfo)=false then
-            OutputDebugString('Speedhack: Error assembling speedhack init 1');
-          //clipboard.AsText:=script.text;
+        setlength(AllocArray,0);
 
-          //fill in the address for the init region
-          for i:=0 to length(disableinfo.allocs)-1 do
-            if disableinfo.allocs[i].varname='init' then
-            begin
-              initaddress:=disableinfo.allocs[i].address;
-              break;
-            end;
-        finally
-          disableinfo.free;
-        end;
+        autoassemble(script,false,true,false,false,AllocArray, exceptionlist);
+        //clipboard.AsText:=script.text;
+
+        //fill in the address for the init region
+        for i:=0 to length(AllocArray)-1 do
+          if AllocArray[i].varname='init' then
+          begin
+            initaddress:=AllocArray[i].address;
+            break;
+          end;
 
 
       except
@@ -415,139 +295,61 @@ begin
           raise exception.Create(rsFailureConfiguringSpeedhackPart+' 1: '+e.message);
         end;
       end;
+
+
       {$ifdef windows}
-
-      if (NoGetTickCount=false) and (nokernelbase=false) then //hook kernel32.GetTickCount as well
-      begin
-        if symhandler.getAddressFromName('kernel32.GetTickCount',true,err)>0 then
-        begin
-          OutputDebugString('Speedhack: hooking kernel32.GetTickCount');
-          script.Clear;
-          script.Add('kernel32.GetTickCount:');
-          script.Add('jmp speedhackversion_GetTickCount');
-          try
-            autoassemble(script,false);
-          except //don't mind
-            on e: exception do
-            begin
-              OutputDebugString('Speedhack: Error hooking kernelbase.GetTickCount: '+e.message);
-            end;
-          end;
-        end;
-      end;
-
       //timegettime
       if symhandler.getAddressFromName('timeGetTime',true,err)>0 then //might not be loaded
       begin
-        OutputDebugString('Speedhack: hooking timeGetTime');
         script.Clear;
         script.Add('timeGetTime:');
         script.Add('jmp speedhackversion_GetTickCount');
         try
           autoassemble(script,false);
         except //don't mind
-          on e:exception do
-          begin
-            OutputDebugString('Speedhack: Error hooking timeGetTime: '+e.message);
-          end;
         end;
       end;
 
 
       //qpc
-      fname:='ntdll.RtlQueryPerformanceCounter';
-      qpcaddress:=symhandler.getAddressFromName(fname,true, err);
+      qpcaddress:=symhandler.getAddressFromName('ntdll.RtlQueryPerformanceCounter',true, err);
       if err then
-      begin
-        fname:='kernel32.QueryPerformanceCounter';
-        qpcaddress:=symhandler.getAddressFromName(fname,true, err);
-
-        if err then
-        begin
-          fname:='';
-          NoQPC:=true;
-        end;
-      end;
+        qpcaddress:=symhandler.getAddressFromName('kernel32.RtlQueryPerformanceCounter',true);
 
 
-      if not noqpc then
-      begin
-        OutputDebugString('Speedhack: hooking '+fname);
-        script.clear;
-        a:=symhandler.getAddressFromName('realQueryPerformanceCounter') ;
-        b:=0;
-        readprocessmemory(processhandle,pointer(a),@b,processhandler.pointersize,x);
+      script.clear;
+      a:=symhandler.getAddressFromName('realQueryPerformanceCounter') ;
+      b:=0;
+      readprocessmemory(processhandle,pointer(a),@b,processhandler.pointersize,x);
 
-        if b<>0 then //already configured
-          generateAPIHookScript(script, inttohex(qpcaddress,8), 'speedhackversion_QueryPerformanceCounter')
-        else
-          generateAPIHookScript(script, inttohex(qpcaddress,8), 'speedhackversion_QueryPerformanceCounter', 'realQueryPerformanceCounter');
+      if b<>0 then //already configured
+        generateAPIHookScript(script, inttohex(qpcaddress,8), 'speedhackversion_QueryPerformanceCounter')
+      else
+        generateAPIHookScript(script, inttohex(qpcaddress,8), 'speedhackversion_QueryPerformanceCounter', 'realQueryPerformanceCounter');
 
-        try
-          autoassemble(script,false);
-        except //do mind
-          on e:exception do
-          begin
-            OutputDebugString('Speedhack: Error hooking '+fname+' : '+e.message);
-            raise exception.Create(rsFailureConfiguringSpeedhackPart+' 2');
-          end;
-        end;
+      try
+        autoassemble(script,false);
+      except //do mind
+        raise exception.Create(rsFailureConfiguringSpeedhackPart+' 2');
       end;
 
       //gettickcount64
-      fname:='kernelbase.GetTickCount64';
-      a:=symhandler.getAddressFromName(fname,true,err);
-      if err then
-      begin
-        nokernelbase:=true;
-        fname:='kernel32.GetTickCount64';
-        a:=symhandler.getAddressFromName(fname,true,err);
-        if err then
-        begin
-          fname:='GetTickCount64';
-          a:=symhandler.getAddressFromName(fname,true,err);
-          if err then
-            NoGetTickCount64:=true;
-        end;
-      end;
-
-      if not NoGetTickCount64 then
+      if symhandler.getAddressFromName('GetTickCount64',true,err)>0 then
       begin
         script.clear;
         a:=symhandler.getAddressFromName('realGetTickCount64') ;
         b:=0;
         readprocessmemory(processhandle,pointer(a),@b,processhandler.pointersize,x);
         if b<>0 then //already configured
-          generateAPIHookScript(script, fname, 'speedhackversion_GetTickCount64')
+          generateAPIHookScript(script, 'GetTickCount64', 'speedhackversion_GetTickCount64')
         else
-          generateAPIHookScript(script, fname, 'speedhackversion_GetTickCount64', 'realGetTickCount64');
+          generateAPIHookScript(script, 'GetTickCount64', 'speedhackversion_GetTickCount64', 'realGetTickCount64');
 
         try
           autoassemble(script,false);
         except //do mind
-          on e:exception do
-          begin
-            OutputDebugString('Speedhack: Error hooking '+fname+' : '+e.message);
-            raise exception.Create(rsFailureConfiguringSpeedhackPart+' 3');
-          end;
+          raise exception.Create(rsFailureConfiguringSpeedhackPart+' 3');
         end;
-
-        if not nokernelbase then
-        begin
-          if symhandler.getAddressFromName('kernel32.GetTickCount64',true,err)>0 then
-          begin
-            script.Clear;
-            script.Add('kernel32.GetTickCount64:');
-            script.Add('jmp speedhackversion_GetTickCount64');
-            try
-              autoassemble(script,false);
-            except //don't mind
-              on e:exception do
-                OutputDebugString('Speedhack: Error hooking kernel32.GetTickCount64 : '+e.message);
-            end;
-          end;
-        end;
-
       end;
       {$endif}
 
@@ -570,6 +372,7 @@ var script: tstringlist;
 begin
   if fprocessid=processhandlerunit.ProcessID then
   begin
+
     try
       setSpeed(1);
     except
@@ -577,8 +380,7 @@ begin
   end;
 
   //do not undo the speedhack script (not all games handle a counter that goes back)
-
-  inherited destroy;
+ 
 end;
 
 function TSpeedhack.getSpeed: single;
@@ -590,26 +392,10 @@ begin
 end;
 
 procedure TSpeedhack.setSpeed(speed: single);
-var
-  x: single;
-  script: Tstringlist;
-  i: integer;
-  r: boolean;
-  error: string;
-begin
-  for i:=0 to length(speedhackCallbacks)-1 do
-  begin
-    if assigned(speedhackCallbacks[i].OnSetSpeed) then
-    begin
-      if speedhackCallbacks[i].OnSetSpeed(speed,r,error) then
-      begin
-        if not r then raise exception.create(error);
-        lastspeed:=speed;
-        exit;
-      end;
-    end;
-  end;
+var x: single;
+    script: Tstringlist;
 
+begin
   if processhandler.isNetwork then
   begin
     getConnection.speedhack_setSpeed(processhandle, speed);
@@ -647,6 +433,9 @@ begin
       script.add('dd '+inttohex(pdword(@x)^,8));
 
       try
+
+  //      showmessage(script.Text);
+       // Clipboard.AsText:=script.text;
         autoassemble(script,false);
       except
         raise exception.Create(rsFailureSettingSpeed);
@@ -661,5 +450,23 @@ begin
 
 end;
 
+{
+alloc(bla,2048)
+alloc(newspeed,4);
+
+bla:
+sub rsp,28
+
+movss xmm0,[newspeed]
+call speedhack_initializeSpeed
+
+add rsp,28
+ret
+
+newspeed:
+dd (float)-1.0
+
+createthread(bla)
+}
 
 end.

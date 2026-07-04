@@ -6,7 +6,7 @@ interface
 
 uses
 
-  Classes, lua, betterControls;
+  Classes, lua;
 
 procedure initializeLuaForm;
 
@@ -50,17 +50,6 @@ begin
   result:=1;
 
 end;
-
-
-function customform_fixDPI(L: PLua_State): integer; cdecl;
-var
-  c: TCustomForm;
-begin
-  c:=luaclass_getClassObject(L);
-  c.AutoAdjustLayout(lapAutoAdjustForDPI,c.DesignTimePPI,screen.PixelsPerInch,c.width,scaley(c.width,c.DesignTimePPI));
-  result:=0;
-end;
-
 
 function customform_getOnClose(L: PLua_State): integer; cdecl;
 var
@@ -326,7 +315,6 @@ begin
 
 end;
 
-
 function createFormFromFile(L: Plua_State): integer; cdecl;
 var filename: string;
   f: TCEForm;
@@ -340,77 +328,11 @@ begin
     f:=TCEForm.Createnew(nil);   //6.3: was application
     f.LoadFromFile(filename);
 
-
-
     luaclass_newClass(L, f);
     result:=1;
   end
   else
     lua_pop(L, lua_gettop(L));
-end;
-
-function createFormFromStream(L: Plua_State): integer; cdecl;
-var stream: tstream;
-  f: TCEForm;
-begin
-  result:=0;
-  if lua_gettop(L)=1 then
-  begin
-    stream:=lua_ToCEUserData(L, 1);
-    lua_pop(L, lua_gettop(L));
-
-    f:=TCEForm.Createnew(nil);
-    f.LoadFromStream(stream);
-
-
-
-    luaclass_newClass(L, f);
-    result:=1;
-  end
-  else
-    lua_pop(L, lua_gettop(L));
-end;
-
-function ceform_saveToStream(L: Plua_State): integer; cdecl;
-var parameters: integer;
-  f: TCEForm;
-  s: TStream;
-begin
-  result:=0;
-  f:=luaclass_getClassObject(L);
-
-  if lua_gettop(L)>=1 then
-  begin
-    s:=lua_ToCEUserData(L, 1);
-    lua_pop(L, lua_gettop(L));
-
-    if (f is TCEForm) then
-    begin
-      try
-        f.SaveToStream(s);
-        //no errors
-
-        lua_pushboolean(L, true);
-        result:=1;
-      except
-        on e: exception do
-        begin
-          lua_pushnil(L);
-          lua_pushstring(L, e.Message);
-          exit(2);
-        end;
-      end;
-    end
-    else
-    begin
-      lua_pushnil(L);
-      lua_pushstring(L,rsTheGivenFormIsNotCompatible+f.ClassName);
-      exit(2);
-    end;
-  end
-  else
-    lua_pop(L, lua_gettop(L));
-
 end;
 
 function ceform_saveToFile(L: Plua_State): integer; cdecl;
@@ -434,24 +356,20 @@ begin
 
         lua_pushboolean(L, true);
         result:=1;
-     except
+      except
         on e: exception do
         begin
-          lua_pushnil(L);
           lua_pushstring(L, e.Message);
-          exit(2);
+          lua_error(L);
         end;
       end;
     end
     else
-    begin
-      lua_pushnil(L);
-      lua_pushstring(L,rsTheGivenFormIsNotCompatible+f.ClassName);
-      exit(2);
-    end;
+      raise exception.create(rsTheGivenFormIsNotCompatible+f.ClassName);
   end
   else
     lua_pop(L, lua_gettop(L));
+
 end;
 
 function ceform_getDoNotSaveInTable(L: PLua_State): integer; cdecl;
@@ -723,7 +641,6 @@ begin
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveFormPosition', customform_saveFormPosition);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'loadFormPosition', customform_loadFormPosition);
 
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'fixDPI', customform_fixDPI);
 
 
   luaclass_addPropertyToTable(L, metatable, userdata, 'OnClose', customform_getOnClose, customform_setOnClose);
@@ -736,7 +653,6 @@ procedure ceform_addMetaData(L: PLua_state; metatable: integer; userdata: intege
 begin
   customform_addMetaData(L, metatable, userdata);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveToFile', ceform_saveToFile);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveToStream', ceform_saveToStream);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'setDoNotSaveInTable', ceform_setDoNotSaveInTable);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'getDoNotSaveInTable', ceform_getDoNotSaveInTable);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveCurrentStateAsDesign', ceform_saveCurrentStateasDesign);
@@ -749,7 +665,6 @@ procedure initializeLuaForm;
 begin
   lua_register(LuaVM, 'createForm', createForm);
   lua_register(LuaVM, 'createFormFromFile', createFormFromFile);
-  lua_register(LuaVM, 'createFormFromStream', createFormFromStream);
 
   lua_register(LuaVM, 'form_centerScreen', customform_centerScreen);
   lua_register(LuaVM, 'form_onClose', customform_setOnClose);

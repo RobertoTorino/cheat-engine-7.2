@@ -15,7 +15,7 @@ uses
   LCLIntf, Messages, SysUtils, Classes, Graphics, Controls, Forms,
   Dialogs,CEFuncProc, StdCtrls, ComCtrls, ExtCtrls, ActnList,
   Menus, LResources,symbolhandler, symbolhandlerstructs, FindDialogFix,
-  commonTypeDefs, strutils, ProcessHandlerUnit, Clipbrd, betterControls;
+  commonTypeDefs, strutils, ProcessHandlerUnit, Clipbrd;
 
 type tenumthread=class(tthread)
   public
@@ -38,7 +38,6 @@ type
     edImageList: TImageList;
     Label2: TLabel;
     CopySymbolName1: TMenuItem;
-    miFindNext: TMenuItem;
     TreeView1: TTreeView;
     Panel1: TPanel;
     Button1: TButton;
@@ -55,7 +54,6 @@ type
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormShow(Sender: TObject);
-    procedure miFindNextClick(Sender: TObject);
     procedure TreeView1CustomDrawItem(Sender: TCustomTreeView; Node: TTreeNode;
       State: TCustomDrawState; var DefaultDraw: Boolean);
     procedure TreeView1DblClick(Sender: TObject);
@@ -101,7 +99,6 @@ end;
 procedure tenumthread.addsymbol;
 var i: integer;
 begin
-  if terminated then exit;
 
   if frmEnumerateDLLs<>nil then
   begin
@@ -114,8 +111,6 @@ end;
 
 procedure tenumthread.AddModule;
 begin
-  if terminated then exit;
-
   if frmEnumerateDLLs<>nil then
   begin
     if x<>nil then frmEnumerateDLLs.treeview1.EndUpdate;
@@ -256,11 +251,6 @@ begin
 
 end;
 
-procedure TfrmEnumerateDLLs.miFindNextClick(Sender: TObject);
-begin
-  FindDialog1Find(Find1);
-end;
-
 procedure TfrmEnumerateDLLs.TreeView1CustomDrawItem(Sender: TCustomTreeView;
   Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
 var
@@ -370,7 +360,6 @@ var current: ttreenode;
     i,j: integer;
 
 begin
-  miFindNext.Enabled:=true;
   if treeview1.Selected=nil then
     current:=treeview1.Items.GetFirstNode
   else
@@ -388,9 +377,7 @@ begin
       exit;
     end;
   end;
-
-  errorbeep;
-  //showmessage(rsNothingFound);
+  showmessage(rsNothingFound);
 end;
 
 initialization

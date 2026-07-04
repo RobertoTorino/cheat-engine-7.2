@@ -37,8 +37,6 @@ function loadMemoryScan_internal(filename)
   local originalToAddress=input.readAnsiString()  
 	local scantype=input.readByte()
 	local vartype=input.readByte()
-  local formhex=input.readByte()==1
-  local memscanhex=input.readByte()==1
   
 
 	local savedscancount=input.readByte()
@@ -82,10 +80,6 @@ function loadMemoryScan_internal(filename)
     end
 
     local fl=ms.FoundList;
-    
-    if ms.OnScanStart then
-      ms.OnScanStart()
-    end
 
     fl.deinitialize() --release the file handles
 
@@ -100,32 +94,18 @@ function loadMemoryScan_internal(filename)
       --get the filename
       local name=input.readAnsiString()
       
-      --print("loading "..name)
+     -- print("loading "..name)
 
       --get the filesize
       local filesize=input.readQword()
-      --print("loading "..name.." with size "..filesize)
-      local trycount=0
-      local output,err
-      while trycount<20 do
-        output,err=createFileStream(getCurrentMemscan().ScanresultFolder..name, fmCreate)
-        if not output then
-          trycount=trycount+1
-          sleep(100)
-        else
-          break
-        end
-      end
-      
+      local output,err=createFileStream(getCurrentMemscan().ScanresultFolder..name, fmCreate)
       if not output then
         MessageDialog(err, mtError,mbOK)
         input.destroy()    
         return      
       end
       
-      if filesize>0  then    
-        output.CopyFrom(input, filesize)         
-      end
+      output.CopyFrom(input, filesize)     
       output.destroy()
     end
 
@@ -140,7 +120,6 @@ function loadMemoryScan_internal(filename)
     end
     
 
-    ms.Hexadecimal=memscanhex
     fl.initialize() --reopen the files
 
     mf.scanvalue.Text=scanvalue --nice number
@@ -150,11 +129,6 @@ function loadMemoryScan_internal(filename)
     mf.FromAddress.Text=originalFromAddress
     mf.ToAddress.Text=originalToAddress  
     mf.foundcountlabel.Caption=fl.Count
-    
-    mf.cbHexadecimal.Checked=formhex
-
-    
-   
   
   end
   ms.OnInitialScanDone=nil
@@ -207,8 +181,6 @@ function saveMemoryScan_internal(filename)
   output.writeAnsiString(mf.toAddress.Text)    
   output.writeByte(mf.scantype.ItemIndex)
   output.writeByte(mf.VarType.ItemIndex)
-  output.writeByte(mf.cbHexadecimal.Checked and 1 or 0)
-  output.writeByte(getCurrentMemscan().Hexadecimal and 1 or 0)
 
   --get the filelist
   local files={}
@@ -222,16 +194,14 @@ function saveMemoryScan_internal(filename)
       local f={}
       f.name=file
       f.size=lfs.attributes(file).size
-      
-      if extractFileExt(file)~='.lock' then
-        table.insert(files, f)
-      end
+
+      table.insert(files, f)
     end
   end
 
   --check the extensions for other things than first, undo or tmp
   local savedscans={}
-  for i=1,#files do    
+  for i=1,#files do
     local ext=files[i].name:match("%.([^%.]+)$")
 
     if (string.upper(ext)~='FIRST') and
@@ -262,13 +232,10 @@ function saveMemoryScan_internal(filename)
   --now save the files
   output.writeByte(#files) --number of files
   for i=1, #files do
-
     --write the filename
     output.writeAnsiString(files[i].name)
-  
+    
     --print("saving "..files[i].name)
-  
-
 
     local input,err=createFileStream(getCurrentMemscan().ScanresultFolder..files[i].name,fmOpenRead | fmShareDenyNone)
     
@@ -283,6 +250,7 @@ function saveMemoryScan_internal(filename)
       input.destroy()
     end
   end
+
   lfs.chdir(olddir)
 
 

@@ -12,7 +12,7 @@ uses
   Classes, SysUtils, lua;
 
 procedure initializeLuaByteTable;
-procedure readBytesFromTable(L: PLua_State; tableindex: integer; p: PByteArray; maxsize: integer; tablestartindex:integer=1);
+procedure readBytesFromTable(L: PLua_State; tableindex: integer; p: PByteArray; maxsize: integer);
 procedure CreateByteTableFromPointer(L: PLua_state; p: pbytearray; size: integer );
 
 implementation
@@ -35,24 +35,24 @@ begin
   end;
 end;
 
-procedure readBytesFromTable(L: PLua_State; tableindex: integer; p: PByteArray; maxsize: integer; tablestartindex: integer=1);
+procedure readBytesFromTable(L: PLua_State; tableindex: integer; p: PByteArray; maxsize: integer);
 var i,j,x: integer;
 begin
-  for i:=0 to maxsize-1 do
+  for i:=1 to maxsize do
   begin
-    lua_pushinteger(L, i+tablestartindex);
+    lua_pushinteger(L, i);
     lua_gettable(L, tableindex);
 
     if lua_isnil(L,-1) then
     begin
       lua_pop(L,1);
-      for j:=i to maxsize-1 do //zero out the rest
+      for j:=i-1 to maxsize-1 do //zero out the rest
         p[j]:=0;
 
       exit;
     end;
 
-    p[i]:=lua_tointeger(L, -1);
+    p[i-1]:=lua_tointeger(L, -1);
     lua_pop(L,1);
   end;
 end;
@@ -128,7 +128,7 @@ begin
   if lua_gettop(L)=1 then
   begin
     v:=lua_tonumber(L, 1);
-{$ifdef cpux86_64}
+{$ifdef cpu64}
     doubletoextended(@v,@ex[0]);
     CreateByteTableFromPointer(L, @ex[0], 10);
 {$else}
@@ -171,21 +171,11 @@ end;
 function byteTableToWord(L: PLua_state): integer; cdecl;
 var
   v: word;
-  tablestartindex: integer;
 begin
   result:=0;
   if lua_gettop(L)>=1 then
   begin
-    if lua_gettop(L)>=3 then
-    begin
-      tablestartindex:=lua_tointeger(L,3);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    readBytesFromTable(L, 1, @v, sizeof(v), tablestartindex);
+    readBytesFromTable(L, 1, @v, sizeof(v));
     if (lua_gettop(L)>=2) and lua_toboolean(L,2) then
       lua_pushinteger(L,smallint(v))
     else
@@ -195,23 +185,12 @@ begin
 end;
 
 function byteTableToDWord(L: PLua_state): integer; cdecl;
-var
-  v: dword;
-  tablestartindex: integer;
+var v: dword;
 begin
   result:=0;
   if lua_gettop(L)>=1 then
   begin
-    if lua_gettop(L)>=3 then
-    begin
-      tablestartindex:=lua_tointeger(L,3);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    readBytesFromTable(L, 1, @v, sizeof(v), tablestartindex);
+    readBytesFromTable(L, 1, @v, sizeof(v));
     if (lua_gettop(L)>=2) and lua_toboolean(L,2) then
       lua_pushinteger(L,integer(v))
     else
@@ -222,46 +201,24 @@ begin
 end;
 
 function byteTableToQWord(L: PLua_state): integer; cdecl;
-var
-  v: qword;
-  tablestartindex: integer;
+var v: qword;
 begin
   result:=0;
-  if lua_gettop(L)>=1 then
+  if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    readBytesFromTable(L, 1, @v, sizeof(v), tablestartindex);
+    readBytesFromTable(L, 1, @v, sizeof(v));
     lua_pushinteger(L,v);
     result:=1;
   end;
 end;
 
 function byteTableToFloat(L: PLua_state): integer; cdecl;
-var
-  v: single;
-  tablestartindex: integer;
+var v: single;
 begin
   result:=0;
-  if lua_gettop(L)>=1 then
+  if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    readBytesFromTable(L, 1, @v, sizeof(v), tablestartindex);
+    readBytesFromTable(L, 1, @v, sizeof(v));
     lua_pushnumber(L,v);
     result:=1;
   end;
@@ -270,23 +227,12 @@ end;
 
 
 function byteTableToDouble(L: PLua_state): integer; cdecl;
-var
-  v: Double;
-  tablestartindex: integer;
+var v: Double;
 begin
   result:=0;
-  if lua_gettop(L)>=1 then
+  if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    readBytesFromTable(L, 1, @v, sizeof(v), tablestartindex);
+    readBytesFromTable(L, 1, @v, sizeof(v));
     lua_pushnumber(L,v);
     result:=1;
   end;
@@ -298,25 +244,16 @@ var
   ex: array [0..9] of byte;
   v: double;
   e: extended;
-  tablestartindex: integer;
 begin
   result:=0;
-  if lua_gettop(L)>=1 then
+  if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=0;
 
-{$ifdef cpux86_64}
-    readBytesFromTable(L, 1, @ex[0], 10,tablestartindex);
+{$ifdef cpu64}
+    readBytesFromTable(L, 1, @ex[0], 10);
     extendedtodouble(@ex[0],v);
 {$else}
-    readBytesFromTable(L, 1, @e, sizeof(e), tablestartindex);
+    readBytesFromTable(L, 1, @e, sizeof(e));
     v:=e;
 {$endif}
     lua_pushnumber(L,v);
@@ -327,25 +264,14 @@ end;
 function byteTableToString(L: PLua_state): integer; cdecl;
 var s: pchar;
   len: integer;
-  tablestartindex: integer;
 begin
   result:=0;
-  if lua_gettop(L)>=1 then
+  if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-    len:=lua_objlen(L, 1)-(tablestartindex-1);
-
+    len:=lua_objlen(L, 1);
     getmem(s, len);
 
-    readBytesFromTable(L, 1, @s[0], len,tablestartindex);
+    readBytesFromTable(L, 1, @s[0], len);
     lua_pushlstring(L, s,len);
     result:=1;
   end;
@@ -357,30 +283,16 @@ var s: pwidechar;
 
   ansis: string;
   len: integer;
-  tablestartindex: integer;
 begin
   result:=0;
   if lua_gettop(L)=1 then
   begin
-    if lua_gettop(L)>=2 then
-    begin
-      tablestartindex:=lua_tointeger(L,2);
-      if tablestartindex<1 then
-        tablestartindex:=1;
-    end
-    else
-      tablestartindex:=1;
-
-
     len:=lua_objlen(L, 1);
-    len:=len-(tablestartindex-1);
     getmem(s, len+2);
-
-
 
     s2:=pointer(s);
 
-    readBytesFromTable(L, 1, @s[0], len, tablestartindex);
+    readBytesFromTable(L, 1, @s[0], len);
     s2[len]:=#0;
     s2[len+1]:=#0;
 

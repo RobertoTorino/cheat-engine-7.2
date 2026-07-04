@@ -28,10 +28,10 @@ uses
      windows,
      {$endif}
      FileUtil, LCLIntf,sysutils, classes,ComCtrls,dialogs, NewKernelHandler,math,
-     SyncObjs, SyncObjs2 {$ifdef windows},windows7taskbar{$endif},SaveFirstScan, savedscanhandler, autoassembler,
+     SyncObjs {$ifdef windows},windows7taskbar{$endif},SaveFirstScan, savedscanhandler, autoassembler,
      symbolhandler, CEFuncProc{$ifdef windows},shellapi{$endif}, CustomTypeHandler, lua,lualib,lauxlib,
      LuaHandler, {$ifdef windows}fileaccess,{$endif} groupscancommandparser, commonTypeDefs, LazUTF8,
-     forms, LazFileUtils, LCLProc, LCLVersion, AvgLvlTree, {$ifdef laztrunk}AVL_Tree{$else}laz_avl_Tree{$endif};
+     forms, LazFileUtils, LCLProc, LCLVersion;
 {$define customtypeimplemented}
 {$endif}
 
@@ -50,17 +50,12 @@ type
   TPostScanState=(psJustFinished, psOptimizingScanResults, psTerminatingThreads, psSavingFirstScanResults, psShouldBeFinished, psSavingFirstScanResults2);
 
 type
-  PAvgLvlTree = ^TAvgLvlTree;
-
-type
   TMemScan=class;
   TScanController=class;
   TScanner=class;
 
   TGroupData=class  //separate for each scanner object
   private
-    is64bit: boolean;
-
     fblocksize: integer;
     fAlignsize: integer;
     outoforder: boolean;
@@ -72,34 +67,23 @@ type
       customtype: TCustomtype;
       value: string;
       widevalue: widestring;
-      valuei, valuei2: qword;
-    //  valuef, valuef2: double;
+      valuei: qword;
+      valuef: double;
       minfvalue: double;
       maxfvalue: double;
       floataccuracy: integer;
-      range: boolean;
-      signed: boolean;
 
       bytesize: integer;
-      pointertypes: TPointerTypes;
     end;
 
     groupdatalength: integer;  //saves a getLenghth lookup call
 
     fscanner: TScanner;
 
-
-
     function ByteScan(value: byte; buf: Pbytearray; var startoffset: integer): boolean;
-    function ByteScanRange(value,value2: byte; signed: boolean; buf: Pbytearray; var startoffset: integer): boolean;
     function WordScan(value: word; buf: pointer; var startoffset: integer): boolean;
-    function WordScanRange(value,value2: word; signed: boolean; buf: pointer; var startoffset: integer): boolean;
     function DWordScan(value: dword; buf: pointer; var startoffset: integer): boolean;
-    function DWordScanRange(value,value2: dword; signed: boolean; buf: pointer; var startoffset: integer): boolean;
     function QWordScan(value: qword; buf: pointer; var startoffset: integer): boolean;
-    function QWordScanRange(value,value2: qword; signed: boolean; buf: pointer; var startoffset: integer): boolean;
-    function Valid32BitPointerScan(value: qword; buf: pointer; var startoffset: integer; pointertypes: TPointerTypes): boolean;
-    function Valid64BitPointerScan(value: qword; buf: pointer; var startoffset: integer; pointertypes: TPointerTypes): boolean;
     function SingleScan(minf,maxf: double; buf: pointer; var startoffset: integer): boolean;
     function DoubleScan(minf,maxf: double; buf: pointer; var startoffset: integer): boolean;
     function CustomScan(ct: Tcustomtype; value: integer; buf: pointer; var startoffset: integer): boolean;
@@ -234,12 +218,7 @@ type
     //custom data
     currentAddress: PtrUInt;
 
-    isStaticPointerLookupTree: TAvgLvlTree;
-    isDynamicPointerLookupTree: TAvgLvlTree;
-    isExecutablePointerLookupTree: TAvgLvlTree;
-
     //check routines:
-
     function Unknown(newvalue,oldvalue: pointer): boolean;
 
     function ByteExact(newvalue,oldvalue: pointer): boolean;
@@ -397,8 +376,6 @@ type
     function CaseSensitiveUnicodeStringExact(newvalue,oldvalue: pointer):boolean;
     function CaseInsensitiveUnicodeStringExact(newvalue,oldvalue: pointer):boolean;
 
-    function CustomCaseSensitiveAnsiStringExact(newvalue,oldvalue: pointer):boolean;
-    function CustomCaseInsensitiveAnsiStringExact(newvalue,oldvalue: pointer):boolean;
 
 
     //save macthing address routines:
@@ -438,7 +415,6 @@ type
     OwningScanController: TScanController;
     Addressfile: TFilestream; //tempscandir+'Addresses'+ThreadID.TMP'
     MemoryFile: TFileStream;  //tempscandir+'Memory'+ThreadID.TMP'
-
     Addressfilename: string;
     MemoryFilename: string;
 
@@ -506,15 +482,6 @@ type
     destructor destroy; override;
   end;
 
-  TVQEValidCacheEntry=class
-  private
-    address: ptruint;
-    size: size_t;
-    valid: boolean;
-    function containsaddress(a: ptruint): boolean;
-  end;
-
-
   TScanController=class(tthread)
   {
     The ScanController will configure the scanners and wait till they are done, mainly a idle thread
@@ -527,18 +494,7 @@ type
     isdoneEvent: TEvent; //gets set when the scan has finished
     isReallyDoneEvent: TEvent; //gets set when the results have been completely written
 
-    isStaticPointerLookupTree: TAvgLvlTree; //init once and reuse by all threads
-    isDynamicPointerLookupTree: TAvgLvlTree; // same ^
-    isExecutablePointerLookupTree: TAvgLvlTree; // same ^
 
-    vqevalidcache: TAvgLvlTree;
-    vqecache_lastregion: TVQEValidCacheEntry;
-
-    function isValidregion(address: ptruint): boolean;
-    procedure FillPointerLookupTrees(pointertypes: TPointertypes);
-    function isPointer(address: ptruint; pointertypes: TPointerTypes): boolean;
-    procedure CleanupIsPointerLookupTree(var lookupTree: TAvgLvlTree);
-    procedure CleanupIsPointerLookupTrees;
 
     procedure updategui;
     procedure errorpopup;
@@ -616,8 +572,6 @@ type
     newluastate: boolean;
     isUnique: boolean;
 
-    workingsetonly: boolean;
-
     procedure execute; override;
     constructor create(suspended: boolean);
     destructor destroy; override;
@@ -675,8 +629,6 @@ type
     fonlyOne: boolean;
     fIsUnique: boolean;
 
-    fworkingsetonly: boolean;
-
 
     ffloatscanWithoutExponents: boolean;
     fInverseScan: boolean;
@@ -708,15 +660,12 @@ type
     fscanExecutable: Tscanregionpreference;
     fscanCopyOnWrite: Tscanregionpreference;
 
-    InuseFile: TFilestream;
 
     procedure DeleteScanfolder;
     procedure createScanfolder;
     function DeleteFolder(dir: string) : boolean;
     procedure setVariableType(t: TVariableType);
-    function getSavedScanCount: integer;
   protected
-    fOnScanStart: TNotifyEvent;
     fOnScanDone: TNotifyEvent;
     fOnInitialScanDone: TNotifyEvent;
     fOnGuiUpdate: TMemScanGuiUpdateRoutine;
@@ -764,7 +713,6 @@ type
 
     procedure saveresults(resultname: string);
     function getsavedresults(r: tstrings): integer;
-    function deleteSavedResult(resultname: string): boolean;
 
     function canWriteResults: boolean;
 
@@ -788,7 +736,6 @@ type
     property ScanresultFolder: string read fScanResultFolder; //read only, it's configured during creation
     property BusyformIsModal: boolean read fbusyformIsModal write fbusyformIsModal;
     property OnScanDone: TNotifyEvent read fOnScanDone write fOnScanDone;
-    property OnScanStart: TNotifyEvent read fOnScanStart write fOnScanStart;
     property OnInitialScanDone: TNotifyEvent read fOnInitialScanDone write fOnInitialScanDone;
     property OnGuiUpdate: TMemscanGuiUpdateRoutine read fOnGuiUpdate write fOnGuiUpdate;
 
@@ -809,15 +756,11 @@ type
     property Fastscanmethod: TFastScanMethod read ffastscanmethod write ffastscanmethod;
     property Fastscanparameter: string read ffastscanparameter write ffastscanparameter;
     property Customtype: TCustomType read fcustomtype write fcustomtype;
-    property WorkingSetOnly: boolean read fworkingsetonly write fworkingsetonly;
-    property PresentOnly: boolean read fworkingsetonly write fworkingsetonly;
-
 
     //next scan specific:
     property Percentage: boolean read fPercentage write fPercentage;
     property CompareToSavedScan: boolean read fcompareToSavedScan write fcompareToSavedScan;
     property SavedScanName: string read fsavedscanname write fsavedscanname;
-    property SavedScanCount: integer read getSavedScanCount;
 
     property scanWritable: Tscanregionpreference read fscanWritable write fscanWritable;
     property scanExecutable: Tscanregionpreference read fscanExecutable write fscanExecutable;
@@ -837,7 +780,7 @@ implementation
 uses ProcessHandlerUnit, parsers, Globals;
 {$else}
 uses formsettingsunit, StrUtils, foundlisthelper, ProcessHandlerUnit, parsers,
-     Globals, frmBusyUnit, controls, mainunit2, processlist;
+     Globals, {$ifdef windows}frmBusyUnit,{$endif} controls;
 {$endif}
 
 resourcestring
@@ -866,9 +809,8 @@ resourcestring
   rsMSNothingToScanFor = 'Nothing to scan for';
   rsMStupidAlignsize = 'Stupid alignsize';
   rsMSCustomTypeIsNil = 'Custom type is nil';
-  rsMSTheScanWasForcedToTerminateSubsequentScansMayNotFunctionProperlyEtc = 'The scan was forced to terminate. Subsequent scans may not function properly. It''s recommended to restart '+strCheatEngine;
+  rsMSTheScanWasForcedToTerminateSubsequentScansMayNotFunctionProperlyEtc = 'The scan was forced to terminate. Subsequent scans may not function properly. It''s recommended to restart Cheat Engine';
   rsThread = 'thread ';
-  rsMSPointerTypeNotRecognised = 'Pointer type not recognised: ';
 //===============Local functions================//
 function getBytecountArrayOfByteString(st: string): integer;
 var bytes: tbytes;
@@ -917,13 +859,9 @@ var start, i: integer;
   gcp: TGroupscanCommandParser;
 
   floatsettings: TFormatSettings;
-
-  fvalue: double;
-  tempq: qword;
 {$endif}
 begin
 {$ifndef jni}
-  is64bit:=processhandler.is64Bit;
   floatsettings:=DefaultFormatSettings;
   fscanner:=scanner;
 
@@ -952,35 +890,20 @@ begin
       groupdata[i].vartype:=gcp.elements[i].vartype;
       groupdata[i].customtype:=gcp.elements[i].customtype;
       groupdata[i].valuei:=gcp.elements[i].valueint;
-     // groupdata[i].valuef:=gcp.elements[i].valuefloat;
+      groupdata[i].valuef:=gcp.elements[i].valuefloat;
 
-      groupdata[i].range:=gcp.elements[i].range;
-      if groupdata[i].range then
-      begin
-        groupdata[i].valuei2:=gcp.elements[i].valueint2;
-        groupdata[i].minfvalue:=gcp.elements[i].valuefloat;
-        groupdata[i].maxfvalue:=gcp.elements[i].valuefloat2;
-        groupdata[i].signed:=gcp.elements[i].signed;
+      groupdata[i].floataccuracy:=pos(gcp.FloatSettings.DecimalSeparator,gcp.elements[i].uservalue);
+      if groupdata[i].floataccuracy>0 then
+        groupdata[i].floataccuracy:=length(gcp.elements[i].uservalue)-groupdata[i].floataccuracy;
 
 
-      end
-      else
-      begin
-        fvalue:=gcp.elements[i].valuefloat;
-        groupdata[i].floataccuracy:=pos(gcp.FloatSettings.DecimalSeparator,gcp.elements[i].uservalue);
-        if groupdata[i].floataccuracy>0 then
-          groupdata[i].floataccuracy:=length(gcp.elements[i].uservalue)-groupdata[i].floataccuracy;
-
-        groupdata[i].minfvalue:=fvalue-(1/(power(10,groupdata[i].floataccuracy)));
-        groupdata[i].maxfvalue:=fvalue+(1/(power(10,groupdata[i].floataccuracy)));
-      end;
+      groupdata[i].minfvalue:=groupdata[i].valuef-(1/(power(10,groupdata[i].floataccuracy)));
+      groupdata[i].maxfvalue:=groupdata[i].valuef+(1/(power(10,groupdata[i].floataccuracy)));
 
       groupdata[i].value:=uppercase(gcp.elements[i].uservalue);
-      groupdata[i].widevalue:=UnicodeUpperCase(gcp.elements[i].uservalue);
+      groupdata[i].widevalue:=uppercase(gcp.elements[i].uservalue);
 
       groupdata[i].bytesize:=gcp.elements[i].bytesize;
-
-      groupdata[i].pointertypes:=gcp.elements[i].pointertypes;
     end;
 
 
@@ -1031,7 +954,6 @@ function TGroupData.compareblock(newvalue,oldvalue: pointer): boolean;
 //ordered scan
 var i: integer;
   f: single;
-  s: string;
 begin
   result:=true;
   for i:=0 to groupdatalength-1 do
@@ -1041,52 +963,31 @@ begin
     case groupdata[i].vartype of
       vtByte:
       begin
-        result:=groupdata[i].wildcard or
-                (not groupdata[i].range and (pbyte(newvalue)^=byte(groupdata[i].valuei))) or
-                (groupdata[i].range and
-                   (groupdata[i].signed and (PSmallInt(newvalue)^>=smallint(groupdata[i].valuei)) and (PSmallInt(newvalue)^<=smallint(groupdata[i].valuei2))) or
-                   (not groupdata[i].signed and (PByte(newvalue)^>=Byte(groupdata[i].valuei)) and (PByte(newvalue)^<=Byte(groupdata[i].valuei2)))
-                );
-
+        result:=groupdata[i].wildcard or (pbyte(newvalue)^=byte(groupdata[i].valuei));
         inc(newvalue, 1);
       end;
 
       vtWord:
       begin
-        result:=groupdata[i].wildcard or
-                (not groupdata[i].range and (pword(newvalue)^=word(groupdata[i].valuei))) or
-                (groupdata[i].range and
-                   (groupdata[i].signed and (PShortint(newvalue)^>=Shortint(groupdata[i].valuei)) and (PShortint(newvalue)^<=Shortint(groupdata[i].valuei2))) or
-                   (not groupdata[i].signed and (PWord(newvalue)^>=Word(groupdata[i].valuei)) and (PWord(newvalue)^<=Word(groupdata[i].valuei2)))
-                );
+        result:=groupdata[i].wildcard or (pword(newvalue)^=word(groupdata[i].valuei));
         inc(newvalue, 2);
       end;
 
       vtDWord:
       begin
-        result:=groupdata[i].wildcard or
-                (not groupdata[i].range and (pdword(newvalue)^=dword(groupdata[i].valuei))) or
-                (groupdata[i].range and
-                   (groupdata[i].signed and (Pinteger(newvalue)^>=integer(groupdata[i].valuei)) and (Pinteger(newvalue)^<=integer(groupdata[i].valuei2))) or
-                   (not groupdata[i].signed and (PDWord(newvalue)^>=DWord(groupdata[i].valuei)) and (PDWord(newvalue)^<=DWord(groupdata[i].valuei2)))
-                );
+        result:=groupdata[i].wildcard or (pdword(newvalue)^=dword(groupdata[i].valuei));
         inc(newvalue, 4);
       end;
 
       vtQWord:
       begin
-        result:=groupdata[i].wildcard or
-                (not groupdata[i].range and (pqword(newvalue)^=qword(groupdata[i].valuei))) or
-                (groupdata[i].range and
-                   (groupdata[i].signed and (Pint64(newvalue)^>=int64(groupdata[i].valuei)) and (Pint64(newvalue)^<=int64(groupdata[i].valuei2))) or
-                   (not groupdata[i].signed and (PQWord(newvalue)^>=QWord(groupdata[i].valuei)) and (PQWord(newvalue)^<=QWord(groupdata[i].valuei2)))
-                );
+        result:=groupdata[i].wildcard or (pqword(newvalue)^=qword(groupdata[i].valuei));
         inc(newvalue, 8);
       end;
 
       vtSingle:
       begin
-        result:=groupdata[i].wildcard or ((psingle(newvalue)^>=groupdata[i].minfvalue) and (psingle(newvalue)^<=groupdata[i].maxfvalue)); //default extreme rounded
+        result:=groupdata[i].wildcard or ((psingle(newvalue)^>groupdata[i].minfvalue) and (psingle(newvalue)^<groupdata[i].maxfvalue)); //default extreme rounded
 
         if result and (floatscanWithoutExponents and (pdword(newvalue)^>0) and (abs(127-(pdword(newvalue)^ shr 23) and $ff)>10)) then
           result:=false;
@@ -1096,7 +997,7 @@ begin
 
       vtDouble:
       begin
-        result:=groupdata[i].wildcard or ((pdouble(newvalue)^>=groupdata[i].minfvalue) and (pdouble(newvalue)^<=groupdata[i].maxfvalue));
+        result:=groupdata[i].wildcard or ((pdouble(newvalue)^>groupdata[i].minfvalue) and (pdouble(newvalue)^<groupdata[i].maxfvalue));
 
         if result and (floatscanWithoutExponents and (pqword(newvalue)^>0) and (abs(integer(1023-(pqword(newvalue)^ shr 52) and $7ff))>10)) then
           result:=false;
@@ -1116,26 +1017,10 @@ begin
         inc(newvalue, groupdata[i].bytesize);
       end;
 
-      vtPointer: //only vtPointer if it's a wildcard pointer
-      begin
-        if is64bit then
-          result:=fscanner.OwningScanController.isPointer(pqword(newvalue)^, groupdata[i].pointertypes)
-        else
-          result:=fscanner.OwningScanController.isPointer(pdword(newvalue)^, groupdata[i].pointertypes);
-
-        inc(newvalue, groupdata[i].bytesize);
-      end;
       //todo: Convert customtype to unix
       {$ifdef customtypeimplemented}
-
       vtCustom:
       begin
-        if groupdata[i].customType.scriptUsesString then
-        begin
-          s:=groupdata[i].customtype.ConvertDataToString(newvalue, fscanner.currentAddress);
-          result:=groupdata[i].wildcard or testString(pchar(s), @groupdata[i].value[1]);
-        end
-        else
         if groupdata[i].customType.scriptUsesFloat then
         begin
           f:=groupdata[i].customType.ConvertDataToFloat(newvalue, fscanner.currentAddress);
@@ -1165,22 +1050,6 @@ begin
     end;
 end;
 
-function TGroupData.ByteScanRange(value,value2: byte; signed: boolean; buf: Pbytearray; var startoffset: integer): boolean;
-var i: integer;
-begin
-  result:=false;
-
-  for i:=startoffset to blocksize-1 do
-    if ((not signed) and (buf[i]>=value) and (buf[i]<=value2)) or
-       ((signed) and (Smallint(buf[i])>=Smallint(value)) and (Smallint(buf[i])<=Smallint(value2)))
-    then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-end;
-
 function TGroupData.WordScan(value: word; buf: pointer; var startoffset: integer): boolean;
 var current: pointer;
   i: integer;
@@ -1200,38 +1069,6 @@ begin
   while i<blocksize-1 do
   begin
     if pword(current)^=value then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-
-    inc(current, align);
-    inc(i, align);
-  end;
-end;
-
-function TGroupData.WordScanRange(value,value2: word; signed: boolean; buf: pointer; var startoffset: integer): boolean;
-var current: pointer;
-  i: integer;
-
-  align: integer;
-begin
-  result:=false;
-  if outoforder_aligned then
-    align:=2
-  else
-    align:=1;
-
-  current:=buf;
-  inc(current, startoffset);
-  i:=startoffset;
-
-  while i<blocksize-1 do
-  begin
-    if ((not signed) and (pword(current)^>=value) and (pword(current)^<=value2)) or
-       ((signed) and (PShortint(current)^>=Shortint(value)) and (PShortint(current)^<=Shortint(value2)))
-    then
     begin
       startoffset:=i+1;
       result:=true;
@@ -1272,37 +1109,6 @@ begin
   end;
 end;
 
-function TGroupData.DWordScanRange(value,value2: dword; signed: boolean; buf: pointer; var startoffset: integer): boolean;
-var current: pointer;
-  i: integer;
-  align: integer;
-begin
-  result:=false;
-  if outoforder_aligned then
-    align:=4
-  else
-    align:=1;
-
-  current:=buf;
-  inc(current, startoffset);
-  i:=startoffset;
-
-  while i<blocksize-3 do
-  begin
-    if ((not signed) and (pdword(current)^>=value) and (pdword(current)^<=value2)) or
-       ((signed) and (Pinteger(current)^>=integer(value)) and (PInteger(current)^<=Integer(value2)))
-    then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-
-    inc(current,align);
-    inc(i,align);
-  end;
-end;
-
 function TGroupData.QWordScan(value: qword; buf: pointer; var startoffset: integer): boolean;
 var current: pointer;
   i: integer;
@@ -1321,95 +1127,6 @@ begin
   while i<blocksize-7 do
   begin
     if pqword(current)^=value then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-
-    inc(current,align);
-    inc(i,align);
-  end;
-end;
-
-function TGroupData.QWordScanRange(value,value2: qword; signed: boolean; buf: pointer; var startoffset: integer): boolean;
-var current: pointer;
-  i: integer;
-  align: integer;
-begin
-  result:=false;
-  if outoforder_aligned then
-    align:=4
-  else
-    align:=1;
-
-  current:=buf;
-  inc(current, startoffset);
-  i:=startoffset;
-
-  while i<blocksize-7 do
-  begin
-    if ((not signed) and (pqword(current)^>=value) and (pqword(current)^<=value2)) or
-       ((signed) and (Pint64(current)^>=int64(value)) and (Pint64(current)^<=int64(value2)))
-    then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-
-    inc(current,align);
-    inc(i,align);
-  end;
-end;
-
-function TGroupData.Valid32BitPointerScan(value: qword; buf: pointer; var startoffset: integer; pointertypes: TPointerTypes): boolean;
-var current: pointer;
-  i: integer;
-  align: integer;
-begin
-  result:=false;
-  if outoforder_aligned then
-    align:=4
-  else
-    align:=1;
-
-  current:=buf;
-  inc(current, startoffset);
-  i:=startoffset;
-
-  while i<blocksize-3 do
-  begin
-    if fScanner.OwningScanController.isPointer(pdword(current)^, pointertypes) then
-    begin
-      startoffset:=i+1;
-      result:=true;
-      exit;
-    end;
-
-    inc(current,align);
-    inc(i,align);
-  end;
-end;
-
-function TGroupData.Valid64BitPointerScan(value: qword; buf: pointer; var startoffset: integer; pointertypes: TPointerTypes): boolean;
-var current: pointer;
-  i: integer;
-  align: integer;
-begin
-  result:=false;
-  if outoforder_aligned then
-    align:=4
-  else
-    align:=1;
-
-  current:=buf;
-  inc(current, startoffset);
-  i:=startoffset;
-
-  while i<blocksize-7 do
-  begin
-    if fScanner.OwningScanController.isPointer(pqword(current)^, pointertypes) then
     begin
       startoffset:=i+1;
       result:=true;
@@ -1618,17 +1335,12 @@ begin
     isin:=true;
 
     currentoffset:=0;
-
     case groupdata[i].vartype of
       vtByte:
       begin
         while result and isin do
         begin
-          if not groupdata[i].range then
-            result:=ByteScan(groupdata[i].valuei, newvalue, currentoffset)
-          else
-            result:=ByteScanRange(groupdata[i].valuei, groupdata[i].valuei2, groupdata[i].signed, newvalue, currentoffset);
-
+          result:=ByteScan(groupdata[i].valuei, newvalue, currentoffset);
           isin:=result and isinlist;
         end;
       end;
@@ -1640,11 +1352,7 @@ begin
           if outoforder_aligned then //adjust currentoffset to be aligned on the current type alignment
             currentoffset:=(currentoffset+1) and $fffffffe;
 
-          if not groupdata[i].range then
-            result:=WordScan(groupdata[i].valuei, newvalue, currentoffset)
-          else
-            result:=WordScanRange(groupdata[i].valuei, groupdata[i].valuei2, groupdata[i].signed, newvalue, currentoffset);
-
+          result:=WordScan(groupdata[i].valuei, newvalue, currentoffset);
           isin:=result and isinlist;
         end;
       end;
@@ -1656,10 +1364,7 @@ begin
           if outoforder_aligned then //adjust currentoffset to be aligned on the current type alignment
             currentoffset:=(currentoffset+3) and $fffffffc;
 
-          if not groupdata[i].range then
-            result:=DWordScan(groupdata[i].valuei, newvalue, currentoffset)
-          else
-            result:=DWordScanRange(groupdata[i].valuei, groupdata[i].valuei2, groupdata[i].signed, newvalue, currentoffset);
+          result:=DWordScan(groupdata[i].valuei, newvalue, currentoffset);
           isin:=result and isinlist;
         end;
       end;
@@ -1671,11 +1376,7 @@ begin
           if outoforder_aligned then //adjust currentoffset to be aligned on the current type alignment
             currentoffset:=(currentoffset+3) and $fffffffc;
 
-          if not groupdata[i].range then
-            result:=QWordScan(groupdata[i].valuei, newvalue, currentoffset)
-          else
-            result:=QWordScanRange(groupdata[i].valuei, groupdata[i].valuei2, groupdata[i].signed, newvalue, currentoffset);
-
+          result:=QWordScan(groupdata[i].valuei, newvalue, currentoffset);
           isin:=result and isinlist;
         end;
       end;
@@ -1688,7 +1389,6 @@ begin
             currentoffset:=(currentoffset+3) and $fffffffc;
 
           result:=SingleScan(groupdata[i].minfvalue, groupdata[i].maxfvalue, newvalue, currentoffset);
-
           isin:=result and isinlist;
         end;
       end;
@@ -1723,18 +1423,6 @@ begin
         end;
       end;
 
-      vtPointer:
-      begin
-        while result and isin do
-        begin
-          if is64bit then
-            result:=Valid64BitPointerScan(0,newvalue, currentoffset, groupdata[i].pointertypes)
-          else
-            result:=Valid32BitPointerScan(0,newvalue, currentoffset, groupdata[i].pointertypes);
-
-          isin:=result and isinlist;
-        end;
-      end;
 {$ifdef customtypeimplemented}
       vtCustom:
       begin
@@ -1743,9 +1431,7 @@ begin
           if outoforder_aligned then //adjust currentoffset to be aligned on the current type alignment
             currentoffset:=(currentoffset+3) and $fffffffc;
 
-          if groupdata[i].customtype.scriptUsesString then
-            result:=stringscan(pchar(groupdata[i].customtype.ConvertDataToString(newvalue, currentoffset)), newvalue, currentoffset)
-          else
+
           if groupdata[i].customtype.scriptUsesFloat then
             result:=CustomScanFloat(groupdata[i].customtype, groupdata[i].minfvalue, groupdata[i].maxfvalue, newvalue, currentoffset)
           else
@@ -1800,9 +1486,7 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
+
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatExact(newvalue,oldvalue) xor inverseScan)
       else
@@ -1847,9 +1531,7 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
+
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatLuaFormula(newvalue,oldvalue) xor inverseScan)
       else
@@ -1894,9 +1576,7 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
+
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatBetween(newvalue,oldvalue) xor inverseScan)
       else
@@ -1940,9 +1620,7 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
+
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatBetween(newvalue,oldvalue) xor inverseScan)
       else
@@ -1986,9 +1664,7 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
+
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatBetweenPercentage(newvalue,oldvalue) xor inverseScan)
       else
@@ -2032,9 +1708,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatBiggerThan(newvalue,oldvalue) xor inverseScan)
       else
@@ -2078,9 +1751,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatSmallerThan(newvalue,oldvalue) xor inverseScan)
       else
@@ -2124,9 +1794,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatIncreasedValue(newvalue,oldvalue) xor inverseScan)
       else
@@ -2170,9 +1837,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatIncreasedValueBy(newvalue,oldvalue) xor inverseScan)
       else
@@ -2216,9 +1880,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatIncreasedValueByPercentage(newvalue,oldvalue) xor inverseScan)
       else
@@ -2263,9 +1924,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatDecreasedValue(newvalue,oldvalue) xor inverseScan)
       else
@@ -2309,9 +1967,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatDecreasedValueBy(newvalue,oldvalue) xor inverseScan)
       else
@@ -2355,9 +2010,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatDecreasedValueByPercentage(newvalue,oldvalue) xor inverseScan)
       else
@@ -2401,9 +2053,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatChanged(newvalue,oldvalue) xor inverseScan)
       else
@@ -2447,9 +2096,6 @@ begin
     for j:=0 to customtypecount-1 do
     begin
       customtype:=tcustomtype(customTypes[j]);
-      if customtype.scriptUsesString then
-        customtypesmatch[j]:=false
-      else
       if customtype.scriptUsesFloat then
         customtypesmatch[j]:=customtypesmatch[j] and (CustomFloatUnchanged(newvalue,oldvalue) xor inverseScan)
       else
@@ -2473,18 +2119,6 @@ begin
         result:=true;
         exit;
       end;
-end;
-
-
-function TScanner.CustomCaseSensitiveAnsiStringExact(newvalue,oldvalue: pointer):boolean;
-begin
-  result:=customType.ConvertDataToString(newvalue, currentAddress)=scanvalue1;
-end;
-
-function TScanner.CustomCaseInsensitiveAnsiStringExact(newvalue,oldvalue: pointer):boolean;
-begin
-  //scanvalue1 has already been converted to uppercase in config
-  result:=uppercase(customType.ConvertDataToString(newvalue, currentAddress))=scanvalue1;
 end;
 
 function TScanner.CaseSensitiveAnsiStringExact(newvalue,oldvalue: pointer):boolean;
@@ -3109,7 +2743,6 @@ begin
 end;
 
 function TScanner.DWordLuaFormula(newvalue,oldvalue: pointer): boolean;
-var t: integer;
 begin
   lua_pushvalue(L,-1);
 
@@ -4186,10 +3819,6 @@ begin
       lastpart:=311;
       while ptruint(p)<=lastmem do
       begin
-{$ifdef overflowdebug}
-        if (ptruint(p)=lastmem) then
-          OutputDebugString(format('scanner %d: p=%x lastmem=%x',[scannernr, ptruint(p),lastmem]));
-{$endif}
         if checkroutine(p,oldp) xor inv then //found one
           StoreResultRoutine(base+ptruint(p)-ptruint(buffer),p);
 
@@ -4539,8 +4168,6 @@ begin
 
           if checkroutine(@newmemory[alist[k]-currentbase],savedscanhandler.getpointertoaddress(alist[k],valuetype, customType )) xor inv then
             StoreResultRoutine(alist[k],@newmemory[alist[k]-currentbase]);
-
-          inc(scanned);
         end;
       end
       else
@@ -4551,8 +4178,6 @@ begin
 
           if CheckRoutine(@newmemory[alist[k]-currentbase],@oldmem[k*vsize]) xor inv then
             StoreResultRoutine(alist[k],@newmemory[alist[k]-currentbase]);
-
-          inc(scanned);
         end;
       end;
     end;
@@ -4574,10 +4199,6 @@ var FloatSettings: TFormatSettings;
     s: string;
 
     signed: boolean;
-
-    tempvalue: int64;
-    tempsvalue: single;
-    tempdvalue: double;
 begin
   signed:=false;
   s:=copy(trim(scanvalue1),1,1);
@@ -4637,15 +4258,9 @@ begin
     if scanvalue1='' then raise exception.Create(rsPleaseFillSomethingIn);
 
 
-    if (not luaformula) and
-       (variableType in [vtByte,vtWord,vtDWord,vtQword,vtAll,vtCustom]) and
-       ((variableType<>vtCustom) or (customType.scriptUsesString=false))
-
-
-    then
+    if (not luaformula) and (variableType in [vtByte,vtWord,vtDWord,vtQword,vtAll,vtCustom]) then
     begin
       //parse scanvalue1
-
 
       scanvalue1:=trim(scanvalue1);
       scanvalue2:=trim(scanvalue2);
@@ -4757,9 +4372,7 @@ begin
       end;
     end;
 
-    if (not luaformula) and (percentage or (variableType in [vtsingle,vtDouble,vtAll, vtCustom])) and
-       ((variableType<>vtCustom) or (customType.scriptUsesString=false))
-    then
+    if (not luaformula) and (percentage or (variableType in [vtsingle,vtDouble,vtAll, vtCustom])) then
     begin
       try
         if hexadecimal then
@@ -4877,9 +4490,11 @@ begin
 
     end;
                   
-    if (variableType = vtString) or ((variabletype=vtCustom) and (customtype.scriptUsesString) ) then
-      widescanvalue1:=UTF8ToUTF16(scanvalue1);
+    if variableType = vtString then
+    begin
 
+      widescanvalue1:=UTF8ToUTF16(scanvalue1);
+    end;    
 
     nibbleSupport:=false;
     if variabletype = vtByteArray then
@@ -5007,37 +4622,6 @@ begin
   if (scanOption in [soIncreasedValueBy, soDecreasedValueBy]) and (value=0) and (dvalue=0) then
     scanOption:=soUnchanged;
 
-
-  if scanOption=soValueBetween then  //make sure the values are from low to high
-  begin
-    if signed and (value>value2) then
-    begin
-      tempvalue:=value;
-      value:=value2;
-      value2:=tempvalue;
-    end
-    else
-    if (not signed) and (uint64(value)>uint64(value2)) then
-    begin
-      tempvalue:=value;
-      value:=value2;
-      value2:=tempvalue;
-    end;
-
-    if svalue>svalue2 then
-    begin
-      tempsvalue:=svalue;
-      svalue:=svalue2;
-      svalue2:=tempsvalue;
-    end;
-
-    if dvalue>dvalue2 then
-    begin
-      tempdvalue:=dvalue;
-      dvalue:=dvalue2;
-      dvalue2:=tempdvalue;
-    end;
-  end;
 
   case variableType of
     vtByte:
@@ -5377,17 +4961,7 @@ begin
 
       StoreResultRoutine:=GenericSaveResult;
 
-      if customType.scriptUsesString then
-      begin
-        case scanOption of
-          soExactValue:
-          begin
-            if casesensitive then CheckRoutine:=CustomCaseSensitiveAnsiStringExact;
-            if not casesensitive then CheckRoutine:=CustomCaseInsensitiveAnsiStringExact;
-          end;
-        end;
-      end
-      else
+
       if customType.scriptUsesFloat then
       begin
         case scanOption of
@@ -5638,13 +5212,14 @@ begin
         end;
       end;
 
-      //inc(scanned,chunksize);
+      inc(scanned,chunksize);
       inc(i,chunksize);
     end;
 
     lastpart:=297;
     flushroutine; //save all results temporarily stored in memory
   finally
+    lastpart:=298;
     if oldAddressFile<>nil then oldAddressFile.free;
     if oldMemoryFile<>nil then oldMemoryFile.free;
     if oldmemory<>nil then virtualfree(oldmemory,0,MEM_RELEASE);
@@ -5654,6 +5229,7 @@ begin
       freememandnil(oldaddressesGroup);
       oldaddressesGroup:=nil;
     end;
+    lastpart:=299;
   end;
 end;
 
@@ -5676,8 +5252,8 @@ begin
   stopregion:=_stopregion;
 
   //allocate a buffer for reading the new memory buffer
-  memorybuffer:=virtualAlloc(nil,maxregionsize+variablesize,MEM_COMMIT or MEM_RESERVE or MEM_TOP_DOWN, PAGE_READWRITE);
-  if memorybuffer=nil then raise exception.create('Failure allocating memory ('+inttostr(maxregionsize+variablesize)+' bytes)');
+  memorybuffer:=virtualAlloc(nil,maxregionsize+(variablesize-1),MEM_COMMIT or MEM_RESERVE or MEM_TOP_DOWN, PAGE_READWRITE);
+  if memorybuffer=nil then raise exception.create('Failure allocating memory ('+inttostr(maxregionsize+(variablesize-1))+' bytes)');
 
   lastpart:=301;
   try
@@ -5754,14 +5330,11 @@ var i: integer;
     currentbase: ptruint;
     size, _size: qword;
     actualread: ptrUint;
-    previousActualRead: ptruint;
     memorybuffer: ^byte;
     toread: qword;
     startregion: integer;
     stopregion: integer;
     phandle: thandle;
-
-    canOverlap: boolean;
 begin
   lastpart:=100;
   phandle:=processhandle;
@@ -5803,8 +5376,6 @@ begin
 
     for i:=startregion to stopregion do
     begin
-      canOverlap:=false;
-
       if terminated or OwningScanController.Terminated then exit;
 
       if i=startregion then
@@ -5816,16 +5387,10 @@ begin
       begin
         currentbase:=OwningScanController.memregion[i].BaseAddress;
         toread:=OwningScanController.memregion[i].MemorySize;
-
-        if ((i+1)<OwningScanController.memRegionPos-1) and (currentbase+toread=OwningScanController.memregion[i+1].BaseAddress) then  //next region is connected, include it if possible
-          canOverlap:=(scanOption<>soUnknownValue);
       end;
 
       if (i=stopregion) and ((currentbase+toread)>stopaddress) then
         toread:=stopaddress-currentbase;
-
-    //  OutputDebugString(format('%.16x - %.16x (%.16x-%.16x)',[currentbase, currentbase+toread,OwningScanController.memregion[i].BaseAddress, OwningScanController.memregion[i].MemorySize ]));
-
 
       lastpart:=102;
 
@@ -5833,35 +5398,19 @@ begin
         //05955958
         size:=toread;
 
-        if (size>buffersize) then
-        begin
-          size:=buffersize;
-          canOverlap:=(scanOption<>soUnknownValue);
-        end;
+        if (size>buffersize) then size:=buffersize;
 
         actualread:=0;
-
-        if canOverlap then
-          _size:=size+(variablesize-1)
+        //variablesize:=0;
+        if size<toread then
+          _size:=size+variablesize-1
         else
           _size:=size;
 
+        if (_size>buffersize) then _size:=buffersize;
 
 
         ReadProcessMemory(phandle,pointer(currentbase),memorybuffer,_size,actualread);
-
-        if (actualread<>_size) then
-        begin
-          if canOverlap then  //try without overlap
-          begin
-            _size:=size;
-            previousActualRead:=actualread;
-            actualread:=0;
-            ReadProcessMemory(phandle,pointer(currentbase+previousActualRead),pointer(ptruint(memorybuffer)+previousActualRead),_size-previousActualRead,actualread);
-
-            inc(actualread, previousActualRead);
-          end;
-        end;
 
         //sanitize the results
         if actualread>_size then actualread:=_size;
@@ -5914,9 +5463,8 @@ begin
         dec(toread,size);
 
         if (OnlyOne and (found>0)) then exit;
-
-
-      until terminated or (toread<=0);
+        
+      until terminated or (toread=0);
     end;
 
     lastpart:=103;
@@ -5947,73 +5495,62 @@ begin
   {$endif}
   *)
 
-  tthread.NameThreadForDebugging('Memscan TScanner thread '+inttostr(scannernr));
+  lastpart:=0;
+  SetExceptionMask([exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
 
 
   try
-    lastpart:=0;
-    SetExceptionMask([exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision]);
+    scanwriter:=TScanfilewriter.create(self,self.OwningScanController,addressfile,memoryfile);
+    lastpart:=1;
 
-
-    try
-      scanwriter:=TScanfilewriter.create(self,self.OwningScanController,addressfile,memoryfile);
-      lastpart:=1;
-
-      if scantype=stFirstScan then firstscan;
-      if scantype=stNextScan then
-      begin
-        if useNextNextScan then
-          nextnextscan
-        else
-          firstnextscan;
-      end;
-
-      //tell scanwriter to stop
-
-      if savedscanhandler<>nil then freeandnil(savedscanhandler);
-
-      lastpart:=2;
-      scanwriter.flush;
-      lastpart:=3;
-
-      if scanwriter.writeError then
-        raise exception.Create(Format(rsDiskWriteError, [scanwriter.errorString]));
-
-      if OnlyOne and (AddressFound<>0) then
-      begin
-        //tell siblings to go kill themselves. This one won the price
-        for i:=0 to length(OwningScanController.scanners)-1 do
-          OwningScanController.scanners[i].Terminate;
-      end;
-
-    except
-      on e: exception do
-      begin
-        haserror:=true;
-        errorstring:=rsThread+inttostr(scannernr)+':'+e.message+' ('+inttostr(lastpart)+')';
-
-        log('Scanner exception:'+errorstring);
-
-
-        {$if lcl_fullversion < 2000000}
-        DebugLn('Scanner exception:'+errorstring);
-        DumpExceptionBackTrace;
-        {$endif}
-
-        //tell all siblings to terminate, something messed up
-        //and I can just do this, since the ScanController is waiting for us, and terminate is pretty much atomic
-        //for i:=0 to length(OwningScanController.scanners)-1 do
-
-        OwningScanController.Terminate;
-
-      end;
+    if scantype=stFirstScan then firstscan;
+    if scantype=stNextScan then
+    begin
+      if useNextNextScan then
+        nextnextscan
+      else
+        firstnextscan;
     end;
 
+    //tell scanwriter to stop
+    lastpart:=2;
+    scanwriter.flush;
+    lastpart:=3;
 
-  finally
-    isdone:=true;
+    if scanwriter.writeError then
+      raise exception.Create(Format(rsDiskWriteError, [scanwriter.errorString]));
+
+    if OnlyOne and (AddressFound<>0) then
+    begin
+      //tell siblings to go kill themselves. This one won the price
+      for i:=0 to length(OwningScanController.scanners)-1 do
+        OwningScanController.scanners[i].Terminate;
+    end;
+
+  except
+    on e: exception do
+    begin
+      haserror:=true;
+      errorstring:=rsThread+inttostr(scannernr)+':'+e.message+' ('+inttostr(lastpart)+')';
+
+      log('Scanner exception:'+errorstring);
+
+
+      {$if lcl_fullversion < 2000000}
+      DebugLn('Scanner exception:'+errorstring);
+      DumpExceptionBackTrace;
+      {$endif}
+
+      //tell all siblings to terminate, something messed up
+      //and I can just do this, since the ScanController is waiting for us, and terminate is pretty much atomic
+      //for i:=0 to length(OwningScanController.scanners)-1 do
+
+      OwningScanController.Terminate;
+
+    end;
   end;
 
+  isdone:=true;
 end;
 
 destructor TScanner.destroy;
@@ -6071,7 +5608,6 @@ begin
   AddressFile:=TFileStream.Create(AddressFilename,fmCreate or fmSharedenynone);
   MemoryFile:=TFileStream.Create(MemoryFilename,fmCreate or fmSharedenynone);
 
-
   Priority:=Globals.scanpriority;
 
   allByte:=vtByte in ScanAllTypes;
@@ -6117,13 +5653,8 @@ end;
 procedure TScanController.fillVariableAndFastScanAlignSize;
 var s: string;
     i,c: integer;
-
-    g: TGroupscanCommandParser;
-
-    pointertypes: TPointerTypes;
 begin
   fastscan:=fastscanmethod<>fsmNotAligned;
-
 
   case variableType of
     vtByte:
@@ -6258,28 +5789,6 @@ begin
     end;
     {$ENDIF}
 
-    vtGrouped:
-    begin
-      //groupscan, check if it will use vtPointer (wildcard pointerscan)
-      g:=TGroupscanCommandParser.create(scanvalue1);
-
-      PointerTypes:=[];
-
-      for i:=0 to length(g.elements)-1 do
-      begin
-        if g.elements[i].vartype=vtPointer then
-          pointertypes:=pointertypes+g.elements[i].pointertypes;
-      end;
-
-
-      FillPointerLookupTrees(pointertypes);
-
-
-
-      g.free;
-
-    end;
-
   end;
 
 
@@ -6297,144 +5806,6 @@ begin
  // OutputDebugString(format('fastscanalignsize=%d',[fastscanalignsize]));
 end;
 
-
-
-type
-  TMemoryRegionInfo=record
-    baseaddress: ptruint;
-    size: size_t;
-  end;
-
-  PMemoryRegionInfo=^TMemoryRegionInfo;
-
-function RegionCompare(Item1, Item2: Pointer): Integer;
-var e1,e2: PMemoryRegionInfo;
-begin
-  e1:=item1;
-  e2:=item2;
-
-  if InRangeQ(e1^.baseaddress, e2^.baseaddress, e2^.baseaddress+e2^.size) or
-     InRangeQ(e2^.baseaddress, e1^.baseaddress, e1^.baseaddress+e1^.size) then
-    exit(0);
-
-  if e1^.baseaddress<e2^.baseaddress then exit(-1) else exit(1);
-end;
-
-procedure TScanController.FillPointerLookupTrees(pointertypes: TPointertypes);
-var
-  a: ptruint;
-  mbi: TMEMORYBASICINFORMATION;
-  e: PMemoryRegionInfo;
-  matchingPointerTypes: TPointertypes;
-begin
-  if isExecutablePointerLookupTree=nil then
-  begin
-    isExecutablePointerLookupTree:=TAvgLvlTree.Create(@RegionCompare);
-
-    a:=0;
-    zeromemory(@mbi,sizeof(mbi));
-    while (Virtualqueryex(processhandle,pointer(a),mbi,sizeof(mbi))<>0) do //There is a setting which causes the whole virtualquerylookup to go very slow. Therefore, do it all in one loop
-    begin
-      if (ptruint(mbi.BaseAddress)<a) or (qword(mbi.baseaddress)>QWORD($8000000000000000)) then break;
-
-      //check if it matches a pointertype
-      matchingPointerTypes:=[];
-      if (ptExecutable in pointertypes) and ((mbi.State=mem_commit) and ((mbi.Protect=PAGE_EXECUTE) or (mbi.Protect=PAGE_EXECUTE_READ) or (mbi.Protect=PAGE_EXECUTE_READWRITE) or (mbi.Protect=PAGE_EXECUTE_WRITECOPY))) then
-        matchingPointerTypes:=[ptExecutable];
-
-
-      if (ptDynamic in pointertypes) and ( (mbi.State=mem_commit) and not ((mbi._type=mem_mapped) or (mbi._type=mem_image))) then
-        matchingPointerTypes:=matchingPointerTypes+[ptDynamic];
-
-      if (ptStatic in pointertypes) and (mbi.State=mem_commit) and ((mbi._type=mem_mapped) or (mbi._type=mem_image)) then
-        matchingPointerTypes:=matchingPointerTypes+[ptStatic];
-
-      if matchingPointerTypes<>[] then
-      begin
-        getmem(e,sizeof(TMemoryRegionInfo));
-        e^.baseaddress:=ptruint(mbi.BaseAddress);
-        e^.size:=mbi.RegionSize;
-
-
-
-        if ptExecutable in matchingPointerTypes then
-        begin
-          if isExecutablePointerLookupTree=nil then
-            isExecutablePointerLookupTree:=TAvgLvlTree.Create(@RegionCompare);
-
-          isExecutablePointerLookupTree.Add(e);
-        end;
-
-        if ptDynamic in matchingPointerTypes then
-        begin
-          if isDynamicPointerLookupTree=nil then
-            isDynamicPointerLookupTree:=TAvgLvlTree.Create(@RegionCompare);
-
-          isDynamicPointerLookupTree.Add(e);
-        end;
-
-        if ptStatic in matchingPointerTypes then
-        begin
-          if isStaticPointerLookupTree=nil then
-            isStaticPointerLookupTree:=TAvgLvlTree.Create(@RegionCompare);
-
-          isStaticPointerLookupTree.Add(e);
-        end;
-      end;
-
-      a:=PtrUint(mbi.baseaddress)+mbi.RegionSize;
-    end;
-  end;
-end;
-
-
-
-function TScanController.isPointer(address: ptruint; pointertypes: TPointerTypes): boolean;
-{
-Will return true/false depending on if the address is a pointer or not
-called by mutiple threads
-}
-var e: TMemoryRegionInfo;
-begin
-  e.baseaddress:=address;
-  e.size:=4;
-  result:=((ptDynamic in pointertypes) and (isDynamicPointerLookupTree.Find(@e)<>nil)) or
-          ((ptStatic in pointertypes) and (isStaticPointerLookupTree.Find(@e)<>nil)) or
-          ((ptExecutable in pointertypes) and (isExecutablePointerLookupTree.Find(@e)<>nil));
-end;
-
-procedure TScanController.CleanupIsPointerLookupTree(var lookupTree: TAvgLvlTree);
-var e: TAVLTreeNodeEnumerator;
-  n: TAvgLvlTreeNode;
-begin
-  if lookupTree<>nil then
-  begin
-    e:=lookupTree.GetEnumerator;
-
-    while e.MoveNext do
-    begin
-      n:=e.Current;
-      if n<>nil then
-      begin
-        freemem(n.Data);
-        n.data:=nil;
-      end;
-    end;
-
-    freemem(e);
-    freemem(lookupTree);
-
-  end;
-
-  lookupTree:=nil;
-end;
-
-procedure TScanController.CleanupIsPointerLookupTrees;
-begin
-  CleanupIsPointerLookupTree(isStaticPointerLookupTree);
-  CleanupIsPointerLookupTree(isDynamicPointerLookupTree);
-  CleanupIsPointerLookupTree(isExecutablePointerLookupTree);
-end;
 
 procedure TScanController.NextNextScan;
 {
@@ -6501,6 +5872,7 @@ begin
           scanners[i]:=tscanner.Create(true,OwningMemScan.ScanresultFolder);
           scanners[i].scannernr:=i;
           scanners[i].OwningScanController:=self;
+
 
           if totalAddresses>0 then
           begin
@@ -6575,11 +5947,18 @@ begin
       //and now we wait
       for i:=0 to threadcount-1 do
       begin
-        while not (terminated or scanners[i].isdone or scanners[i].Finished) do
+        while not (terminated or scanners[i].isdone) do
         begin
-          scanners[i].WaitTillDone(25);
-          if (OwningMemScan.progressbar<>nil) or (assigned(owningmemscan.OnGuiUpdate)) then
-            synchronize(updategui);
+         {$ifdef android}
+         if not scanners[i].Finished then
+           sleep(25);
+         {$endif}
+
+         {$ifdef windows}
+         WaitForSingleObject(scanners[i].Handle,25); //25ms, an eternity for a cpu
+         {$endif}
+         if (OwningMemScan.progressbar<>nil) or (assigned(owningmemscan.OnGuiUpdate)) then
+           synchronize(updategui);
         end;
 
         //If terminated then stop the scanner thread and wait for it to finish
@@ -6627,8 +6006,8 @@ var
 
   i,j: integer;
   totalProcessMemorySize: qword;
-  blocksize: qword;
-  leftfromprevious: qword;
+  blocksize: dword;
+  leftfromprevious: dword;
   offsetincurrentregion: PtrUint;
   
   currentblocksize: qword;
@@ -6807,11 +6186,15 @@ begin
   //and now we wait
   for i:=0 to threadcount-1 do
   begin
-    while not (terminated or scanners[i].isdone or scanners[i].Finished) do
+    while not (terminated or scanners[i].isdone) do
     begin
-      scanners[i].WaitTillDone(25);
+    {$IFDEF WINDOWS}
+      WaitForSingleObject(scanners[i].Handle,25); //25ms, an eternity for a cpu
       if (OwningMemScan.progressbar<>nil) or (assigned(owningmemscan.OnGuiUpdate))  then
         synchronize(updategui);
+    {$else}
+      sleep(25);
+    {$ENDIF}
     end;
 
     //If terminated then stop the scanner thread and wait for it to finish
@@ -6867,114 +6250,6 @@ begin
     NextNextScan;
 end;
 
-
-
-
-function vqevalidcachecompare(Item1, Item2: Pointer): Integer;
-begin
-  if InRangeX(TVQEValidCacheEntry(Item1).address, TVQEValidCacheEntry(Item2).address, TVQEValidCacheEntry(Item2).address+TVQEValidCacheEntry(Item2).size-1) then
-    exit(0)
-  else
-    result:=CompareValue(TVQEValidCacheEntry(Item1).address, TVQEValidCacheEntry(Item2).address);
-end;
-
-
-function TVQEValidCacheEntry.containsaddress(a: ptruint): boolean;
-begin
-  result:=(a>=address) and (a<address+size);
-end;
-
-function TScanController.isValidregion(address: ptruint): boolean;
-var
-  mbi : TMemoryBasicInformation;
-  isWritable, isExecutable, isCopyOnWrite: boolean;
-
-  e: TVQEValidCacheEntry;
-  n: TAVLTreeNode;
-begin
-  result:=false;
-
-  if address<startaddress then exit(false);
-  if address>stopaddress then exit(false);
-
-  if (vqecache_lastregion<>nil) and (vqecache_lastregion.containsaddress(address)) then
-    exit(vqecache_lastregion.valid);
-
-  e:=TVQEValidCacheEntry.Create;
-  e.address:=address;
-  n:=vqevalidcache.Find(e);
-
-  e.free;
-
-  if n<>nil then
-  begin
-    vqecache_lastregion:=TVQEValidCacheEntry(n.Data);
-    exit(TVQEValidCacheEntry(n.Data).valid);
-  end;
-
-  if VirtualQueryEx(processhandle, pointer(address), mbi, sizeof(mbi))<>0 then
-  begin
-    e:=TVQEValidCacheEntry.Create;
-    e.address:=ptruint(mbi.BaseAddress);
-    e.size:=mbi.RegionSize;
-    e.valid:=false;
-
-
-    result:=(mbi.State=mem_commit);
-    if not result then
-    begin
-      vqevalidcache.Add(e);
-      exit;
-    end;
-
-    result:=result and (PtrUint(mbi.BaseAddress)<stopaddress);
-    result:=result and ((mbi.Protect and page_guard)=0);
-    result:=result and ((mbi.protect and page_noaccess)=0);
-    result:=result and (not (not scan_mem_private and (mbi._type=mem_private)));
-    result:=result and (not (not scan_mem_image and (mbi._type=mem_image)));
-    result:=result and (not (not scan_mem_mapped and (mbi._type=mem_mapped)));
-    result:=result and (not (Skip_PAGE_NOCACHE and ((mbi._type and PAGE_NOCACHE)>0)));
-    result:=result and (not (Skip_PAGE_WRITECOMBINE and ((mbi._type and PAGE_WRITECOMBINE)>0)));
-
-    if result then
-    begin
-      //initial check passed, check the other protection flags to see if it should be scanned
-
-      //fill in isWritable, isExecutable, isCopyOnWrite: boolean;
-      isWritable:=((mbi.protect and PAGE_READWRITE)>0) or
-                  ((mbi.protect and PAGE_WRITECOPY)>0) or //writecopy IS writable
-                  ((mbi.protect and PAGE_EXECUTE_READWRITE)>0) or
-                  ((mbi.protect and PAGE_EXECUTE_WRITECOPY)>0);
-
-      isExecutable:=((mbi.protect and PAGE_EXECUTE)>0) or
-                    ((mbi.protect and PAGE_EXECUTE_READ)>0) or
-                    ((mbi.protect and PAGE_EXECUTE_READWRITE)>0) or
-                    ((mbi.protect and PAGE_EXECUTE_WRITECOPY)>0);
-
-      isCopyOnWrite:=((mbi.protect and PAGE_WRITECOPY)>0) or
-                     ((mbi.protect and PAGE_EXECUTE_WRITECOPY)>0);
-
-      case scanWritable of
-        scanInclude: result:=result and isWritable;
-        scanExclude: result:=result and (not isWritable);
-      end;
-
-      case scanExecutable of
-        scanInclude: result:=result and isExecutable;
-        scanExclude: result:=result and (not isExecutable);
-      end;
-
-      case scanCopyOnWrite of
-        scanInclude: result:=result and isCopyOnWrite;
-        scanExclude: result:=result and (not isCopyOnWrite);
-      end;
-    end;
-
-    e.valid:=result;
-    vqevalidcache.Add(e);
-  end;
-end;
-
 procedure TScanController.firstScan;
 {
 first scan will gather the memory regions, open the files, and spawn scanners
@@ -6988,7 +6263,7 @@ var
   Blocksize: qword;
   currentblocksize: qword;
   totalProcessMemorySize: qword;
-  leftfromprevious: qword;
+  leftfromprevious: dword;
   offsetincurrentregion: qword;
 
   isWritable, isExecutable, isCopyOnWrite{$ifdef darwin}, isDirty{$endif}: boolean;
@@ -7002,23 +6277,9 @@ var
   vqecacheflag: dword;
 
   starta,startb, stopa,stopb: ptruint;
-
-  wsisize: dword;
-  {$ifdef windows}
-  wsi: PPSAPI_WORKING_SET_INFORMATION;
-  {$endif}
-
-  getmemtimestart: qword;
-  getmemtimestop: qword;
-
-  parseregiontimestart: qword;
-  parseregiontimestop: qword;
 begin
  // OutputDebugString('TScanController.firstScan');
-
-
-
-  if (OnlyOne and (not isUnique)) or (luaformula and (newluastate=false)) then
+  if OnlyOne or (luaformula and (newluastate=false)) then
     threadcount:=1
   else
     threadcount:=GetCPUCount;
@@ -7056,7 +6317,7 @@ begin
   memRegionPos:=0;
 
 
-  if OnlyOne or isUnique then //don't align at all. Some users want a byte perfect range...
+  if OnlyOne then //don't align at all. Some users want a byte perfect range...
   begin
     //if (startaddress mod 8)>0 then //align on a 8 byte base
     // startaddress:=startaddress-(startaddress mod 8)+8;
@@ -7091,80 +6352,10 @@ begin
   if scan_dirtyonly and (scanWritable=scanInclude) then
     vqecacheflag:=vqecacheflag or VQE_DIRTYONLY;  //2
 
-
+  {$ifndef darwin}
   VirtualQueryEx_StartCache(processhandle, vqecacheflag);
-
-
-  {$ifdef windows}
-  if workingsetonly and assigned(QueryWorkingSet) then
-  begin
-    getmemtimestart:=GetTickCount64;
-    vqevalidcache:=TAvgLvlTree.Create(@vqevalidcachecompare);
-
-    wsisize:=sizeof(PSAPI_WORKING_SET_INFORMATION);
-    getmem(wsi, sizeof(PSAPI_WORKING_SET_INFORMATION));
-    while (QueryWorkingSet(processhandle, wsi, wsisize)=false) do
-    begin
-      if GetLastError<>ERROR_BAD_LENGTH then
-        raise exception.create('Failure querying present memory: unexpected error');
-
-      wsisize:=(wsi^.NumberOfEntries+(wsi^.NumberOfEntries shr 1))*sizeof(ptruint);  //add a little bit extra
-      freemem(wsi);
-      if wsisize=0 then raise exception.create('Failure querying present memory: invalid size');
-      getmem(wsi, wsisize);
-    end;
-
-    getmemtimestop:=GetTickCount64;
-
-    parseregiontimestart:=GetTickCount64;
-    validregion:=false;
-    for i:=0 to wsi^.NumberOfEntries-1 do
-    begin
-     // if (wsi^.WorkingSetInfo[i] and (1 shl 8)) <>0 then continue;
-
-      if (not validregion) or ((wsi^.WorkingSetInfo[i-1] and $fff)<>(wsi^.WorkingSetInfo[i] and $fff)) or ((wsi^.WorkingSetInfo[i-1] shr 12)+1<>(wsi^.WorkingSetInfo[i-1] shr 12)) then
-      begin
-        //new section or became valid ?
-
-        if isValidRegion(wsi^.WorkingSetInfo[i] and qword($fffffffffffff000)) then
-        begin
-          memRegion[memRegionPos].BaseAddress:=wsi^.WorkingSetInfo[i] and qword($fffffffffffff000);
-          memRegion[memRegionPos].MemorySize:=4096;
-          memRegion[memRegionPos].startaddress:=pointer(ptrUint(totalProcessMemorySize));
-
-          inc(totalProcessMemorySize, 4096);
-          inc(memRegionPos);
-          validregion:=true;
-
-
-          if (memRegionPos mod 16)=0 then //add another 16 to it
-            setlength(memRegion,length(memRegion)+16);
-        end
-        else
-          validregion:=false;
-      end
-      else
-      begin
-        if validregion then //append to the current section
-        begin
-          inc(memRegion[memRegionPos-1].MemorySize,4096);
-          inc(totalProcessMemorySize, 4096);
-        end;
-      end;
-
-
-    end;
-
-    parseregiontimestop:=GetTickCount64;
-
-    //cleanup vqe valid cache
-    vqevalidcache.FreeAndClear;
-    vqevalidcache.free;
-
-    vqecache_lastregion:=nil;
-  end
-  else
   {$endif}
+
   while (Virtualqueryex(processhandle,pointer(currentBaseAddress),mbi,sizeof(mbi))<>0) and (currentBaseAddress<stopaddress) and ((currentBaseAddress+mbi.RegionSize)>currentBaseAddress) do   //last check is done to see if it wasn't a 64-bit overflow.
   begin
   //  OutputDebugString(format('R=%x-%x',[ptruint(mbi.BaseAddress), ptruint(mbi.BaseAddress)+mbi.RegionSize]));
@@ -7172,9 +6363,6 @@ begin
 
    // if (not (not scan_mem_private and (mbi._type=mem_private))) and (not (not scan_mem_image and (mbi._type=mem_image))) and (not (not scan_mem_mapped and (mbi._type=mem_mapped))) and (mbi.State=mem_commit) and ((mbi.Protect and page_guard)=0) and ((mbi.protect and page_noaccess)=0) then  //look if it is commited
     begin
-
-
-
       if PtrUint(mbi.BaseAddress)<startaddress then
       begin
         dec(mbi.RegionSize, startaddress-PtrUint(mbi.BaseAddress));
@@ -7287,9 +6475,10 @@ begin
 
   end;
 
+  {$ifndef darwin}
   VirtualQueryEx_EndCache(processhandle);
-
-   {
+  {$endif}
+    {
   OutputDebugString(format('memRegionPos=%d',[memRegionPos]));
   for i:=0 to memRegionPos-1 do
   BEGIN
@@ -7311,8 +6500,7 @@ begin
       end;
     end;
   end;
-  }
-
+        }
 
   totalAddresses:=totalProcessMemorySize;
 
@@ -7336,9 +6524,9 @@ begin
     if OwningMemScan.previousMemoryBuffer<>nil then virtualfree(OwningMemScan.previousMemoryBuffer,0,MEM_RELEASE);
 
     //OutputDebugString(format('Allocating %dKB for previousMemoryBuffer',[totalProcessMemorySize div 1024]));
-    OwningMemScan.previousMemoryBuffer:=VirtualAlloc(nil,totalProcessMemorySize+8192, MEM_COMMIT or MEM_RESERVE or MEM_TOP_DOWN, PAGE_READWRITE); //top down to try to prevent memory fragmentation
+    OwningMemScan.previousMemoryBuffer:=VirtualAlloc(nil,totalProcessMemorySize, MEM_COMMIT or MEM_RESERVE or MEM_TOP_DOWN, PAGE_READWRITE); //top down to try to prevent memory fragmentation
     if OwningMemScan.previousMemoryBuffer=nil then
-      raise exception.Create(Format(rsFailureAllocatingMemoryForCopyTriedAllocatingKB, [inttostr(8+totalProcessMemorySize div 1024)]));
+      raise exception.Create(Format(rsFailureAllocatingMemoryForCopyTriedAllocatingKB, [inttostr(totalProcessMemorySize div 1024)]));
 
   //  OutputDebugString(format('Allocated at %p',[OwningMemScan.previousMemoryBuffer]));
     {$endif}
@@ -7515,11 +6703,17 @@ begin
     //and now we wait
     for i:=0 to threadcount-1 do
     begin
-      while not (terminated or scanners[i].isdone or scanners[i].Finished) do
+      while not (terminated or scanners[i].isdone) do
       begin
-        scanners[i].WaitTillDone(25);
+{$ifdef windows}
+        WaitForSingleObject(scanners[i].Handle,25); //25ms, an eternity for a cpu
+
         if (OwningMemScan.progressbar<>nil) or (assigned(owningmemscan.OnGuiUpdate)) then
           synchronize(updategui);
+{$else}
+        sleep(25)
+{$endif}
+
       end;
 
 
@@ -7650,7 +6844,6 @@ var err: dword;
     datatype: string[6];
 begin
  // OutputDebugString('TScanController.execute');
-  tthread.NameThreadForDebugging('Memscan TScanController thread');
 
   try
 
@@ -7921,8 +7114,6 @@ begin
    // outputdebugstring('Queue OwningMemScan.ScanDone');
     Queue(OwningMemScan.ScanDone);
   end;
-
-  CleanupIsPointerLookupTrees;
 end;
 
 constructor TScanController.create(suspended: boolean);
@@ -8099,32 +7290,6 @@ begin
   result:=r.count;
 end;
 
-function TMemscan.getSavedScanCount: integer;
-begin
-  if savedresults=nil then exit(0);
-  result:=savedresults.Count-1;
-end;
-
-function TMemscan.deleteSavedResult(resultname: string): boolean;
-var i: integer;
-begin
-  if resultname='' then exit(false);
-
-  if (resultname='TMP') or (resultname='UNDO') then
-    raise exception.create(rsTMPAndUNDOAreNamesThatMayNotBeUsedTryAnotherName);
-
-  if savedresults=nil then exit(false);
-
-  i:=savedresults.IndexOf(resultname);
-  if i=-1 then exit(false);
-
-  savedresults.Delete(i);
-
-  DeleteFile(pchar(fScanResultFolder+'MEMORY.'+resultname));
-  DeleteFile(pchar(fScanResultFolder+'ADDRESSES.'+resultname));
-  result:=true;
-end;
-
 procedure TMemscan.saveresults(resultname: string);
 var fname: string;
 begin
@@ -8147,13 +7312,13 @@ begin
 
 
   //everything looks ok
-  waittillreallydone;
+  waittilldone;
 
 
 
   //copy the current scanresults to memory.savedscan and addresses.savedscan
-  CopyFile(pchar(fScanResultFolder+'MEMORY.TMP'), pchar(fScanResultFolder+'MEMORY.'+resultname), false,false);
-  CopyFile(pchar(fScanResultFolder+'ADDRESSES.TMP'), pchar(fScanResultFolder+'ADDRESSES.'+resultname), false, false);
+  CopyFile(pchar(fScanResultFolder+'MEMORY.TMP'), pchar(fScanResultFolder+'MEMORY.'+resultname), false);
+  CopyFile(pchar(fScanResultFolder+'ADDRESSES.TMP'), pchar(fScanResultFolder+'ADDRESSES.'+resultname), false);
 
   savedresults.Add(resultname);
 
@@ -8386,9 +7551,6 @@ begin
   fLastscantype:=stNewScan;
   fLastScanValue:='';
 
-  if savedresults<>nil then
-    savedresults.Clear;
-
   deletescanfolder;
   createscanfolder;
 
@@ -8399,7 +7561,6 @@ begin
   fpercentage:=false;
   fcompareToSavedScan:=false;
   fsavedscanname:='';
-
 
 end;
 
@@ -8423,13 +7584,11 @@ end;
 
 procedure TMemscan.NextScan;
 var
+  {$ifdef windows}
   frmBusy: TfrmBusy;
+  {$endif}
   r: TModalResult;
 begin
-
-  if assigned(fOnScanStart) then
-    fOnScanStart(self);
-
   {$IFNDEF jni}
    if attachedFoundlist<>nil then
      TFoundList(Attachedfoundlist).Deinitialize;
@@ -8441,10 +7600,12 @@ begin
 
    if scanController<>nil then
    begin
-     if GUIScanner and (not scancontroller.WaitTillDone(500)) then
+     {$ifdef windows}
+
+     if GUIScanner and (WaitForSingleObject(scancontroller.handle, 500)<>WAIT_OBJECT_0) then
      begin
        frmBusy:=TfrmBusy.create(nil);
-       frmBusy.WaitForThread:=scancontroller;
+       frmBusy.WaitForHandle:=scancontroller.handle;
        frmBusy.memscan:=self;
        frmBusy.Reason:=postScanState;
 
@@ -8465,7 +7626,7 @@ begin
        frmBusy.free;
      end;
 
-
+     {$endif}
 
      scancontroller.WaitFor; //could be it's still saving the results of the previous scan
      freeandnil(scanController);
@@ -8474,12 +7635,12 @@ begin
    {$IFNDEF LOWMEMORYUSAGE}
    if SaveFirstScanThread<>nil then
    begin
-
-     if GUIScanner and (not SaveFirstScanThread.WaitTillDone(500)) then
+     {$ifdef windows}
+     if GUIScanner and (WaitForSingleObject(SaveFirstScanThread.handle, 500)<>WAIT_OBJECT_0) then
      begin
        postscanstate:=psSavingFirstScanResults2;
        frmBusy:=TfrmBusy.create(nil);
-       frmBusy.WaitForThread:=SaveFirstScanThread;
+       frmBusy.WaitForHandle:=SaveFirstScanThread.handle;
        frmBusy.memscan:=self;
        frmBusy.Reason:=postScanState;
 
@@ -8499,7 +7660,7 @@ begin
 
        frmBusy.free;
      end;
-
+     {$endif}
 
      SaveFirstScanThread.WaitFor; //wait till it's done
      freeandnil(SaveFirstScanThread);
@@ -8555,7 +7716,6 @@ procedure TMemscan.firstscan(_scanOption: TScanOption; _VariableType: TVariableT
   _scanvalue1, _scanvalue2: string; _startaddress,_stopaddress: ptruint; _hexadecimal,_binaryStringAsDecimal,_unicode,_casesensitive: boolean;
   _fastscanmethod: TFastScanMethod=fsmNotAligned; _fastscanparameter: string=''; _customtype: TCustomType=nil);
 begin
-
   Hexadecimal:=_hexadecimal;
 
   self.fastscanparameter:=_fastscanparameter;
@@ -8584,9 +7744,6 @@ end;
 
 procedure TMemScan.FirstScan;
 begin
-  if assigned(fOnScanStart) then
-    fOnScanStart(self);
-
   if (variableType=vtCustom) and (customtype=nil) then
     raise exception.create('customType=nil');
 
@@ -8661,7 +7818,6 @@ begin
   scancontroller.newluastate:=fNewLuaState;
   scancontroller.isUnique:=fIsUnique;
   scanController.OnlyOne:=fOnlyOne;
-  scancontroller.workingsetonly:=fworkingsetonly;
 
   fLastscantype:=stFirstScan;
   fLastScanValue:=scanValue1;
@@ -8762,7 +7918,7 @@ begin
 
   usedtempdir:=IncludeTrailingPathDelimiter(usedtempdir);
 
-  fScanResultFolder:=usedtempdir+strCheatEngine+pathdelim;
+  fScanResultFolder:=usedtempdir+'Cheat Engine'+pathdelim;
 
  // OutputDebugString('fScanResultFolder='+fScanResultFolder);
 
@@ -8797,11 +7953,6 @@ begin
 
   fScanResultFolder:=fScanResultFolder+GUIDToString(guid)+pathdelim;
   CreateDir(fScanResultFolder);
-
-
-  InuseFile:=TFilestream.Create(fScanResultFolder+pathdelim+'inuse.lock',fmCreate or fmShareExclusive); //has an exclusive lock marking other CE's that this folder is still in use
-  InuseFile.WriteDword(GetCurrentProcessId);
-
 end;
 
 procedure TMemscan.DeleteScanfolder;
@@ -8811,28 +7962,16 @@ var usedtempdir: string;
     age: longint;
     currenttime: longint;
 
-    pid: dword;
-    iuf: TFilestream;
-
 begin
  // OutputDebugString('TMemscan.DeleteScanfolder');
- { if (attachedFoundlist<>nil) then
-    TFoundList(attachedFoundlist).Deinitialize; }
-
   if fScanResultFolder<>'' then
   begin
     try
-      if InuseFile<>nil then
-      begin
-        freeandnil(InuseFile);
-        deletefile(fScanResultFolder+pathdelim+'inuse.lock');
-      end;
-
       if DeleteFolder(fScanResultFolder)=false then outputdebugstring('Failure deleting the scanresults');
 
 
 
-      //check if there are folders left
+      //check if there are folders that are older than 2 days
       if (length(tempdiralternative)>2) and dontusetempdir then
       begin
         usedtempdir:=tempdiralternative;
@@ -8844,10 +7983,8 @@ begin
       else
         usedtempdir:=GetTempDir;
 
-      pidlookup_init;
 
-
-      if FindFirst(usedtempdir+strCheatEngine+pathdelim+'{*}',  faDirectory , info)=0 then
+      if FindFirst(usedtempdir+'Cheat Engine'+pathdelim+'{*}',  faDirectory , info)=0 then
       begin
         repeat
           if (info.Attr and faDirectory) = faDirectory then
@@ -8855,32 +7992,18 @@ begin
             if length(info.Name)>5 then
             begin
               //if found, delete them if older than 2 days
-              {$ifndef windows}
-              //exclusivity means nothing to unix
-              f:=usedtempdir+strCheatEngine+pathdelim+info.name;
-              if FileExists(f+PathDelim+'inuse.lock') then
+              f:=usedtempdir+'Cheat Engine'+pathdelim+info.name;
+
+
+              age:=info.time; //FileAge('"'+f+'"');
+
+              if age>0 then
               begin
-                iuf:=nil;
-                try
-                  iuf:=tfilestream.Create(f+PathDelim+'inuse.lock', fmOpenRead);
-                  pid:=iuf.ReadDWord;
-                  freeandnil(iuf);
-                  if (pid=GetCurrentProcessId) or pidexists(pid) then continue; //still exists
+                currenttime:=DateTimeToFileDate(now);
 
-                  deletefile(f+PathDelim+'inuse.lock');
-                except
-                end;
-
-                if iuf<>nil then
-                  freeandnil(iuf);
+                if (currenttime-age) > 60*60*24*2 then //if older than 2 days  then
+                  deletefolder(f);
               end;
-              {$endif}
-
-
-              if (FileExists(f+PathDelim+'inuse.lock')=false) {$ifdef windows}or deletefile(f+PathDelim+'inuse.lock'){$endif} then //if deleting inuse.lock succeeds, then the file wasn't used anymore (only work on ainwodws)
-                deletefolder(f);
-
-
             end;
           end;
 

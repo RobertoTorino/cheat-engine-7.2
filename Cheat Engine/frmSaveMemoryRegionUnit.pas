@@ -9,7 +9,7 @@ uses
   macport,
   {$endif}
   LCLIntf, Messages, SysUtils, Classes, Graphics, Controls, Forms, symbolhandler,
-  Dialogs, StdCtrls, NewKernelHandler, CEFuncProc, ExtCtrls, LResources, Menus, betterControls;
+  Dialogs, StdCtrls, NewKernelHandler, CEFuncProc, ExtCtrls, LResources, Menus;
 
 type
 
@@ -53,12 +53,12 @@ var
 
 implementation
 
-uses ProcessHandlerUnit, Parsers, mainunit2;
+uses ProcessHandlerUnit, Parsers;
 
 resourcestring
   rsPleaseAddAtLeastOneAddressRegionToTheList = 'Please add at least one address region to the list';
   rsNotAllTheMemoryWasReadableIn = 'Not all the memory was readable in';
-  rsNoStartAddress = 'If you don''t include the header data you''ll have to specify the startaddress yourself when loading the file(That means '+strCheatEngine+' won''t fill in the '
+  rsNoStartAddress = 'If you don''t include the header data you''ll have to specify the startaddress yourself when loading the file(That means Cheat Engine wont fill in the '
     +'startaddress text field when loaded for you)';
   rsIsNotAValidAddress = '%s is not a valid address';
 

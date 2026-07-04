@@ -130,12 +130,7 @@ var
   stream: Tstream;
 begin
   stream:=luaclass_getClassObject(L);
-  try
-    lua_pushinteger(L,stream.ReadByte);
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
+  lua_pushinteger(L,stream.ReadByte);
   result:=1;
 end;
 
@@ -144,11 +139,7 @@ var
   stream: Tstream;
 begin
   stream:=luaclass_getClassObject(L);
-  try
-    stream.WriteByte(lua_tointeger(L,1));
-
-  finally
-  end;
+  stream.WriteByte(lua_tointeger(L,1));
   result:=0;
 end;
 
@@ -157,12 +148,7 @@ var
   stream: Tstream;
 begin
   stream:=luaclass_getClassObject(L);
-  try
-    lua_pushinteger(L,stream.ReadWord);
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
+  lua_pushinteger(L,stream.ReadWord);
   result:=1;
 end;
 
@@ -180,12 +166,7 @@ var
   stream: Tstream;
 begin
   stream:=luaclass_getClassObject(L);
-  try
-    lua_pushinteger(L,stream.ReadDword);
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
+  lua_pushinteger(L,stream.ReadDword);
   result:=1;
 end;
 
@@ -203,12 +184,7 @@ var
   stream: Tstream;
 begin
   stream:=luaclass_getClassObject(L);
-  try
-    lua_pushinteger(L,stream.ReadQword);
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
+  lua_pushinteger(L,stream.ReadQword);
   result:=1;
 end;
 
@@ -219,117 +195,6 @@ begin
   stream:=luaclass_getClassObject(L);
   stream.WriteQword(lua_tointeger(L,1));
   result:=0;
-end;
-
-function stream_readFloat(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  f: single;
-begin
-  stream:=luaclass_getClassObject(L);
-  try
-    stream.Read(f,sizeof(f));
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
-
-  lua_pushnumber(L,f);
-  result:=1;
-end;
-
-function stream_writeFloat(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  f: single;
-begin
-  stream:=luaclass_getClassObject(L);
-  f:=lua_tonumber(L,1);
-  stream.Write(f, sizeof(f));
-  result:=0;
-end;
-
-function stream_readDouble(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  d: double;
-begin
-  stream:=luaclass_getClassObject(L);
-  try
-    stream.Read(d,sizeof(d));
-  except
-    lua_pushstring(L,'stream error');
-    lua_error(L);
-  end;
-
-  lua_pushnumber(L,d);
-  result:=1;
-end;
-
-function stream_writeDouble(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  d: double;
-begin
-  stream:=luaclass_getClassObject(L);
-  d:=lua_tonumber(L,1);
-  stream.Write(d, sizeof(d));
-  result:=0;
-end;
-
-
-
-function stream_readString(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  size: integer;
-  s: pchar;
-begin
-  stream:=luaclass_getClassObject(L);
-  result:=0;
-  if lua_gettop(L)>=1 then
-  begin
-    size:=lua_tointeger(L,1);
-    getmem(s,size+1);
-    stream.ReadBuffer(s^,size);
-    s[size]:=#0;
-
-    lua_pushstring(L,s);
-    result:=1;
-  end
-  else
-  begin
-    lua_pushnil(L);
-    lua_pushstring(L,rsIncorrectNumberOfParameters);
-  end;
-end;
-
-function stream_writeString(L: PLua_State): integer; cdecl;
-var
-  stream: Tstream;
-  s: string;
-  includeterminator: boolean;
-begin
-  stream:=luaclass_getClassObject(L);
-  result:=0;
-
-  if lua_gettop(L)>=1 then
-  begin
-    s:=Lua_ToString(L,1);
-    if lua_gettop(L)>=2 then
-      includeterminator:=lua_toboolean(L,2)
-    else
-      includeterminator:=false;
-
-    stream.WriteBuffer(s[1],length(s));
-    if includeterminator then
-      stream.WriteByte(0);
-  end
-  else
-  begin
-    lua_pushnil(L);
-    lua_pushstring(L,rsIncorrectNumberOfParameters);
-  end;
 end;
 
 function stream_readAnsiString(L: PLua_State): integer; cdecl;
@@ -395,6 +260,7 @@ end;
 procedure stream_addMetaData(L: PLua_state; metatable: integer; userdata: integer );
 begin
   object_addMetaData(L, metatable, userdata);
+
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'copyFrom', stream_copyFrom);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'read', stream_read);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'write', stream_write);
@@ -406,12 +272,6 @@ begin
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeDword', stream_writeDword);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'readQword', stream_readQword);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeQword', stream_writeQword);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'readFloat', stream_readFloat);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeFloat', stream_writeFloat);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'readDouble', stream_readDouble);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeDouble', stream_writeDouble);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'readString', stream_readString);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeString', stream_writeString);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'readAnsiString', stream_readAnsiString);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'writeAnsiString', stream_writeAnsiString);
 
@@ -452,7 +312,6 @@ var
   ms: Tmemorystream;
   r: boolean=false;
 begin
-  result:=0;
   ms:=luaclass_getClassObject(L);
   if lua_gettop(L)>=1 then
   try
@@ -472,8 +331,6 @@ end;
 function memorystream_saveToFileNoError(L: PLua_State): integer; cdecl;
 var ms: Tmemorystream;
 begin
-  result:=0;
-
   ms:=luaclass_getClassObject(L);
   if lua_gettop(L)>=1 then
   try
@@ -489,11 +346,6 @@ begin
     end;
   end;
 
-end;
-
-function memorystream_clear(L: PLua_State): integer; cdecl;
-begin
-  tmemorystream(luaclass_getClassObject(L)).Clear;
   result:=0;
 end;
 
@@ -504,7 +356,6 @@ begin
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveToFile', memorystream_saveToFile);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'loadFromFileNoError', memorystream_loadFromFileNoError);
   luaclass_addClassFunctionToTable(L, metatable, userdata, 'saveToFileNoError', memorystream_saveToFileNoError);
-  luaclass_addClassFunctionToTable(L, metatable, userdata, 'clear', memorystream_clear);
   luaclass_addPropertyToTable(L, metatable, userdata, 'Memory', memorystream_getMemory, nil);
 end;
 
@@ -528,7 +379,7 @@ end;
 
 procedure stringstream_addMetaData(L: PLua_state; metatable: integer; userdata: integer );
 begin
-  memorystream_addMetaData(L, metatable, userdata);
+  stream_addMetaData(L, metatable, userdata);
   luaclass_addPropertyToTable(L, metatable, userdata, 'DataString', stringstream_getDataString, nil);
 end;
 

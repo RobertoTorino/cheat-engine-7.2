@@ -1,20 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="12"/>
+    <Version Value="11"/>
     <PathDelim Value="\"/>
     <General>
-      <Flags>
-        <CompatibilityMode Value="True"/>
-      </Flags>
       <SessionStorage Value="InProjectDir"/>
+      <MainUnit Value="0"/>
       <AutoCreateForms Value="False"/>
-      <Title Value="Cheat Engine 7.5"/>
-      <UseXPManifest Value="True"/>
+      <Title Value="Cheat Engine 7.2"/>
       <XPManifest>
-        <DpiAware Value="True"/>
-        <TextName Value="Cheat Engine"/>
-        <TextDesc Value="Scripting language and tools"/>
+        <ExecutionLevel Value="requireAdministrator"/>
       </XPManifest>
       <Icon Value="0"/>
     </General>
@@ -26,13 +21,13 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MajorVersionNr Value="7"/>
-      <MinorVersionNr Value="5"/>
-      <BuildNr Value="7712"/>
-      <Language Value="041C"/>
-      <CharSet Value="04B0"/>
-      <StringTable CompanyName="Cheat Engine" FileDescription="Cheat Engine" ProductVersion="7.5"/>
+      <MinorVersionNr Value="2"/>
+      <BuildNr Value="6542"/>
+      <Language Value=""/>
+      <CharSet Value=""/>
+      <StringTable CompanyName="Cheat Engine" FileDescription="Cheat Engine" ProductVersion="7.2"/>
     </VersionInfo>
-    <BuildModes Count="11">
+    <BuildModes Count="10">
       <Item1 Name="Release 32-Bit" Default="True"/>
       <Item2 Name="Release 64-Bit">
         <CompilerOptions>
@@ -43,7 +38,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -63,7 +58,6 @@
           </CodeGeneration>
           <Linking>
             <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
               <StripSymbols Value="True"/>
               <UseExternalDbgSyms Value="True"/>
             </Debugging>
@@ -87,12 +81,8 @@
 -dbenchmarkps
 -dcemain
 -dNDEBUG
--dDBVMFORAMDISWORKING
--dNESTEDSTRUCTURES
--dTHREADNAMESUPPORT
--donebytejumps
--dNoODS"/>
-            <OtherDefines Count="20">
+-dDBVMFORAMDISWORKING"/>
+            <OtherDefines Count="13">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -106,13 +96,6 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
-              <Define13 Value="NESTEDSTRUCTURES"/>
-              <Define14 Value="THREADNAMESUPPORT"/>
-              <Define15 Value="LINUXTCCTEST"/>
-              <Define16 Value="asserthexviewisthreadsafe"/>
-              <Define17 Value="DEBUGPROTOCOL"/>
-              <Define18 Value="NEWCHANGEREGONX86"/>
-              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -126,7 +109,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-SSE4-AVX-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -171,12 +154,8 @@
 -OpCOREAVX2
 -dbenchmarkps
 -dcemain
--dNDEBUG
--dDBVMFORAMDISWORKING
--dNESTEDSTRUCTURES
--donebytejumps
--dNoODS"/>
-            <OtherDefines Count="20">
+-dNDEBUG"/>
+            <OtherDefines Count="13">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -190,13 +169,6 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
-              <Define13 Value="NESTEDSTRUCTURES"/>
-              <Define14 Value="THREADNAMESUPPORT"/>
-              <Define15 Value="LINUXTCCTEST"/>
-              <Define16 Value="asserthexviewisthreadsafe"/>
-              <Define17 Value="DEBUGPROTOCOL"/>
-              <Define18 Value="NEWCHANGEREGONX86"/>
-              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -210,7 +182,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;macsrc;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -255,20 +227,15 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dUSELAZFREETYPE
--dNESTEDSTRUCTURES"/>
-            <OtherDefines Count="11">
-              <Define0 Value="NOTMULTITHREADED"/>
-              <Define1 Value="benchmarkps"/>
-              <Define2 Value="cemain"/>
-              <Define3 Value="NDEBUG"/>
-              <Define4 Value="D3DDebug"/>
-              <Define5 Value="NOVMX"/>
-              <Define6 Value="CUSTOMFLOAT"/>
-              <Define7 Value="XDEBUG"/>
-              <Define8 Value="USELAZFREETYPE"/>
-              <Define9 Value="NESTEDSTRUCTURES"/>
-              <Define10 Value="THREADNAMESUPPORT"/>
+-dUSELAZFREETYPE"/>
+            <OtherDefines Count="7">
+              <Define0 Value="benchmarkps"/>
+              <Define1 Value="cemain"/>
+              <Define2 Value="NDEBUG"/>
+              <Define3 Value="D3DDebug"/>
+              <Define4 Value="NOVMX"/>
+              <Define5 Value="CUSTOMFLOAT"/>
+              <Define6 Value="USELAZFREETYPE"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
@@ -282,7 +249,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -316,7 +283,7 @@
               <ShowHints Value="False"/>
             </Verbosity>
             <WriteFPCLogo Value="False"/>
-            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dNESTEDSTRUCTURES"/>
+            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG"/>
           </Other>
         </CompilerOptions>
       </Item5>
@@ -329,7 +296,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -344,9 +311,6 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
-            <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
-            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -362,16 +326,8 @@
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
             </ConfigFile>
-            <CustomOptions Value="-WB00400000
--dbenchmarkps
--dcemain
--dNDEBUG
--dD3DDebug
--dNOVMX
--dCUSTOMFLOAT
--dNESTEDSTRUCTURES
--doverflowdebug"/>
-            <OtherDefines Count="20">
+            <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT"/>
+            <OtherDefines Count="9">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -381,22 +337,11 @@
               <Define6 Value="CUSTOMFLOAT"/>
               <Define7 Value="XDEBUG"/>
               <Define8 Value="memleaksearch"/>
-              <Define9 Value="checkassembleralphabet"/>
-              <Define10 Value="memorymapped"/>
-              <Define11 Value="privatebuild"/>
-              <Define12 Value="DBVMFORAMDISWORKING"/>
-              <Define13 Value="NESTEDSTRUCTURES"/>
-              <Define14 Value="THREADNAMESUPPORT"/>
-              <Define15 Value="LINUXTCCTEST"/>
-              <Define16 Value="asserthexviewisthreadsafe"/>
-              <Define17 Value="DEBUGPROTOCOL"/>
-              <Define18 Value="NEWCHANGEREGONX86"/>
-              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
       </Item6>
-      <Item7 Name="Debug Optimized 64-Bit">
+      <Item7 Name="debug-nomt">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -405,91 +350,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
-            <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
-          </SearchPaths>
-          <Parsing>
-            <Style Value="1"/>
-            <SyntaxOptions>
-              <SyntaxMode Value="Delphi"/>
-            </SyntaxOptions>
-          </Parsing>
-          <CodeGeneration>
-            <SmartLinkUnit Value="True"/>
-            <TargetCPU Value="x86_64"/>
-            <TargetOS Value="win64"/>
-            <Optimizations>
-              <OptimizationLevel Value="3"/>
-              <VariablesInRegisters Value="True"/>
-            </Optimizations>
-          </CodeGeneration>
-          <Linking>
-            <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
-              <StripSymbols Value="True"/>
-              <UseExternalDbgSyms Value="True"/>
-            </Debugging>
-            <LinkSmart Value="True"/>
-            <Options>
-              <Win32>
-                <GraphicApplication Value="True"/>
-              </Win32>
-            </Options>
-          </Linking>
-          <Other>
-            <Verbosity>
-              <ShowNotes Value="False"/>
-              <ShowHints Value="False"/>
-            </Verbosity>
-            <WriteFPCLogo Value="False"/>
-            <CompilerMessages>
-              <IgnoredMessages idx6058="True" idx5066="True" idx5043="True" idx4105="True" idx4104="True" idx3177="True" idx3175="True" idx2005="True"/>
-            </CompilerMessages>
-            <CustomOptions Value="-WB00400000
--dbenchmarkps
--dcemain
--dNDEBUG
--dDBVMFORAMDISWORKING
--dNESTEDSTRUCTURES
--dTHREADNAMESUPPORT
--donebytejumps
--dNoODS
--dDEBUGTHREADERRORS"/>
-            <OtherDefines Count="20">
-              <Define0 Value="NOTMULTITHREADED"/>
-              <Define1 Value="benchmarkps"/>
-              <Define2 Value="cemain"/>
-              <Define3 Value="NDEBUG"/>
-              <Define4 Value="D3DDebug"/>
-              <Define5 Value="NOVMX"/>
-              <Define6 Value="CUSTOMFLOAT"/>
-              <Define7 Value="XDEBUG"/>
-              <Define8 Value="memleaksearch"/>
-              <Define9 Value="checkassembleralphabet"/>
-              <Define10 Value="memorymapped"/>
-              <Define11 Value="privatebuild"/>
-              <Define12 Value="DBVMFORAMDISWORKING"/>
-              <Define13 Value="NESTEDSTRUCTURES"/>
-              <Define14 Value="THREADNAMESUPPORT"/>
-              <Define15 Value="LINUXTCCTEST"/>
-              <Define16 Value="asserthexviewisthreadsafe"/>
-              <Define17 Value="DEBUGPROTOCOL"/>
-              <Define18 Value="NEWCHANGEREGONX86"/>
-              <Define19 Value="overflowdebug"/>
-            </OtherDefines>
-          </Other>
-        </CompilerOptions>
-      </Item7>
-      <Item8 Name="debug-nomt">
-        <CompilerOptions>
-          <Version Value="11"/>
-          <PathDelim Value="\"/>
-          <Target>
-            <Filename Value="bin\cheatengine-$(TargetCPU)"/>
-          </Target>
-          <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -504,9 +365,6 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
-            <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
-            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -523,26 +381,11 @@
             <ConfigFile>
               <StopAfterErrCount Value="1000"/>
             </ConfigFile>
-            <CustomOptions Value="-dNOTMULTITHREADED -dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT -dXDEBUG -dNESTEDSTRUCTURES -dDEBUGTHREADERRORS"/>
-            <OtherDefines Count="13">
-              <Define0 Value="NOTMULTITHREADED"/>
-              <Define1 Value="benchmarkps"/>
-              <Define2 Value="cemain"/>
-              <Define3 Value="NDEBUG"/>
-              <Define4 Value="D3DDebug"/>
-              <Define5 Value="NOVMX"/>
-              <Define6 Value="CUSTOMFLOAT"/>
-              <Define7 Value="XDEBUG"/>
-              <Define8 Value="memleaksearch"/>
-              <Define9 Value="checkassembleralphabet"/>
-              <Define10 Value="memorymapped"/>
-              <Define11 Value="privatebuild"/>
-              <Define12 Value="DBVMFORAMDISWORKING"/>
-            </OtherDefines>
+            <CustomOptions Value="-dNOTMULTITHREADED -dbenchmarkps -dcemain -WB00400000 -dNDEBUG -dD3DDebug -dNOVMX -dCUSTOMFLOAT -dXDEBUG"/>
           </Other>
         </CompilerOptions>
-      </Item8>
-      <Item9 Name="debug-nomt mac">
+      </Item7>
+      <Item8 Name="debug-nomt mac">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -551,7 +394,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;macsrc;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;luamac;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -596,27 +439,11 @@
 -dNOVMX
 -dCUSTOMFLOAT
 -dXDEBUG
--dUSELAZFREETYPE
--dNESTEDSTRUCTURES
--dTHREADNAMESUPPORT
--dlaztrunk"/>
-            <OtherDefines Count="11">
-              <Define0 Value="NOTMULTITHREADED"/>
-              <Define1 Value="benchmarkps"/>
-              <Define2 Value="cemain"/>
-              <Define3 Value="NDEBUG"/>
-              <Define4 Value="D3DDebug"/>
-              <Define5 Value="NOVMX"/>
-              <Define6 Value="CUSTOMFLOAT"/>
-              <Define7 Value="XDEBUG"/>
-              <Define8 Value="USELAZFREETYPE"/>
-              <Define9 Value="NESTEDSTRUCTURES"/>
-              <Define10 Value="THREADNAMESUPPORT"/>
-            </OtherDefines>
+-dUSELAZFREETYPE"/>
           </Other>
         </CompilerOptions>
-      </Item9>
-      <Item10 Name="debug-nomt 32-bit">
+      </Item8>
+      <Item9 Name="debug-nomt 32-bit">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -625,7 +452,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include;$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
@@ -642,10 +469,6 @@
             </Optimizations>
           </CodeGeneration>
           <Linking>
-            <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
-              <UseExternalDbgSyms Value="True"/>
-            </Debugging>
             <Options>
               <Win32>
                 <GraphicApplication Value="True"/>
@@ -670,10 +493,8 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dXDEBUG
--dNESTEDSTRUCTURES
--dDEBUGTHREADERRORS"/>
-            <OtherDefines Count="13">
+-dXDEBUG"/>
+            <OtherDefines Count="10">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -684,14 +505,11 @@
               <Define7 Value="XDEBUG"/>
               <Define8 Value="memleaksearch"/>
               <Define9 Value="checkassembleralphabet"/>
-              <Define10 Value="memorymapped"/>
-              <Define11 Value="privatebuild"/>
-              <Define12 Value="DBVMFORAMDISWORKING"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item10>
-      <Item11 Name="debug-nomt 64-bit">
+      </Item9>
+      <Item10 Name="debug-nomt 64-bit">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -700,11 +518,14 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include;$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images"/>
-            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+            <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
             <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Parsing>
             <Style Value="1"/>
+            <SyntaxOptions>
+              <SyntaxMode Value="Delphi"/>
+            </SyntaxOptions>
           </Parsing>
           <CodeGeneration>
             <TargetCPU Value="x86_64"/>
@@ -715,7 +536,6 @@
           </CodeGeneration>
           <Linking>
             <Debugging>
-              <DebugInfoType Value="dsDwarf2Set"/>
               <TrashVariables Value="True"/>
               <UseExternalDbgSyms Value="True"/>
             </Debugging>
@@ -745,13 +565,8 @@
 -dD3DDebug
 -dNOVMX
 -dCUSTOMFLOAT
--dXDEBUG
--dNESTEDSTRUCTURES
--dTHREADNAMESUPPORT
--dLINUXTCCTEST
--donebytejumps
--dDEBUGTHREADERRORS"/>
-            <OtherDefines Count="20">
+-dXDEBUG"/>
+            <OtherDefines Count="13">
               <Define0 Value="NOTMULTITHREADED"/>
               <Define1 Value="benchmarkps"/>
               <Define2 Value="cemain"/>
@@ -765,17 +580,10 @@
               <Define10 Value="memorymapped"/>
               <Define11 Value="privatebuild"/>
               <Define12 Value="DBVMFORAMDISWORKING"/>
-              <Define13 Value="NESTEDSTRUCTURES"/>
-              <Define14 Value="THREADNAMESUPPORT"/>
-              <Define15 Value="LINUXTCCTEST"/>
-              <Define16 Value="asserthexviewisthreadsafe"/>
-              <Define17 Value="DEBUGPROTOCOL"/>
-              <Define18 Value="NEWCHANGEREGONX86"/>
-              <Define19 Value="overflowdebug"/>
             </OtherDefines>
           </Other>
         </CompilerOptions>
-      </Item11>
+      </Item10>
     </BuildModes>
     <PublishOptions>
       <Version Value="2"/>
@@ -783,49 +591,48 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
+        <CommandLineParams Value="hasrights"/>
+        <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
+            <CommandLineParams Value="hasrights"/>
+            <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T 'Lazarus Run Output' -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
           </local>
         </Mode0>
       </Modes>
     </RunParams>
-    <RequiredPackages Count="9">
+    <RequiredPackages Count="8">
       <Item1>
-        <PackageName Value="laz.virtualtreeview_package"/>
+        <PackageName Value="FCL"/>
       </Item1>
       <Item2>
-        <PackageName Value="FCL"/>
+        <PackageName Value="SQLDBLaz"/>
       </Item2>
       <Item3>
-        <PackageName Value="SQLDBLaz"/>
+        <PackageName Value="LazControls"/>
       </Item3>
       <Item4>
-        <PackageName Value="LazControls"/>
-      </Item4>
-      <Item5>
         <PackageName Value="LCLBase"/>
         <MinVersion Major="1" Release="1" Valid="True"/>
+      </Item4>
+      <Item5>
+        <PackageName Value="IDEIntf"/>
       </Item5>
       <Item6>
-        <PackageName Value="IDEIntf"/>
+        <PackageName Value="CodeTools"/>
       </Item6>
       <Item7>
-        <PackageName Value="CodeTools"/>
-      </Item7>
-      <Item8>
         <PackageName Value="SynEdit"/>
         <MinVersion Major="1" Valid="True"/>
-      </Item8>
-      <Item9>
+      </Item7>
+      <Item8>
         <PackageName Value="LCL"/>
-      </Item9>
+      </Item8>
     </RequiredPackages>
-    <Units Count="424">
+    <Units Count="396">
       <Unit0>
         <Filename Value="cheatengine.lpr"/>
         <IsPartOfProject Value="True"/>
@@ -1768,7 +1575,6 @@
       <Unit171>
         <Filename Value="luabrush.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="LuaBrush"/>
       </Unit171>
       <Unit172>
         <Filename Value="LuaPicture.pas"/>
@@ -2720,7 +2526,6 @@
         <Filename Value="frmexceptionregionlistunit.pas"/>
         <IsPartOfProject Value="True"/>
         <ComponentName Value="frmExceptionRegionList"/>
-        <HasResources Value="True"/>
         <ResourceBaseClass Value="Form"/>
         <UnitName Value="frmExceptionRegionListUnit"/>
       </Unit359>
@@ -2889,7 +2694,6 @@
         <Filename Value="frmdebugsymbolstructurelistunit.pas"/>
         <IsPartOfProject Value="True"/>
         <HasResources Value="True"/>
-        <UnitName Value="frmDebugSymbolStructureListUnit"/>
       </Unit389>
       <Unit390>
         <Filename Value="macumm.pas"/>
@@ -2919,151 +2723,6 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="LuaDotNetPipe"/>
       </Unit395>
-      <Unit396>
-        <Filename Value="luaremoteexecutor.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="LuaRemoteExecutor"/>
-      </Unit396>
-      <Unit397>
-        <Filename Value="betterControls\newbutton.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="newButton"/>
-      </Unit397>
-      <Unit398>
-        <Filename Value="betterControls\newcheckbox.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="newCheckbox"/>
-      </Unit398>
-      <Unit399>
-        <Filename Value="betterControls\newradiobutton.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="newRadioButton"/>
-      </Unit399>
-      <Unit400>
-        <Filename Value="betterControls\bettercontrols.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="betterControls"/>
-      </Unit400>
-      <Unit401>
-        <Filename Value="autoassemblercode.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit401>
-      <Unit402>
-        <Filename Value="csharpcompiler.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="CSharpCompiler"/>
-      </Unit402>
-      <Unit403>
-        <Filename Value="betterControls\newhintwindow.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit403>
-      <Unit404>
-        <Filename Value="memrecdatastructures.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="memrecDataStructures"/>
-      </Unit404>
-      <Unit405>
-        <Filename Value="luacecustombutton.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="LuaCECustomButton"/>
-      </Unit405>
-      <Unit406>
-        <Filename Value="dbvmdebuggerinterface.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="DBVMDebuggerInterface"/>
-      </Unit406>
-      <Unit407>
-        <Filename Value="tcclib.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit407>
-      <Unit408>
-        <Filename Value="sourcecodehandler.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit408>
-      <Unit409>
-        <Filename Value="frmsourcedisplayunit.pas"/>
-        <IsPartOfProject Value="True"/>
-        <ComponentName Value="frmSourceDisplay"/>
-        <HasResources Value="True"/>
-        <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmSourceDisplayUnit"/>
-      </Unit409>
-      <Unit410>
-        <Filename Value="frmcr3switcherunit.pas"/>
-        <IsPartOfProject Value="True"/>
-        <ComponentName Value="frmCR3Switcher"/>
-        <HasResources Value="True"/>
-        <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmCR3SwitcherUnit"/>
-      </Unit410>
-      <Unit411>
-        <Filename Value="disassemblerarm64.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="DisAssemblerARM64"/>
-      </Unit411>
-      <Unit412>
-        <Filename Value="contexthandler.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit412>
-      <Unit413>
-        <Filename Value="disassemblerarm32.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="DisAssemblerARM32"/>
-      </Unit413>
-      <Unit414>
-        <Filename Value="frmanchoreditor.pas"/>
-        <IsPartOfProject Value="True"/>
-        <ComponentName Value="AnchorEditor"/>
-        <HasResources Value="True"/>
-        <ResourceBaseClass Value="Form"/>
-        <UnitName Value="frmAnchorEditor"/>
-      </Unit414>
-      <Unit415>
-        <Filename Value="disassemblerarm32thumb.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="disassemblerArm32Thumb"/>
-      </Unit415>
-      <Unit416>
-        <Filename Value="iptnative.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit416>
-      <Unit417>
-        <Filename Value="iptlogdisplay.pas"/>
-        <IsPartOfProject Value="True"/>
-        <ComponentName Value="frmIPTLogDisplay"/>
-        <HasResources Value="True"/>
-        <ResourceBaseClass Value="Form"/>
-      </Unit417>
-      <Unit418>
-        <Filename Value="luavirtualstringtree.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="LuaVirtualStringTree"/>
-      </Unit418>
-      <Unit419>
-        <Filename Value="userbytedisassembler.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit419>
-      <Unit420>
-        <Filename Value="luanetworkinterface.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="LuaNetworkInterface"/>
-      </Unit420>
-      <Unit421>
-        <Filename Value="libcepack.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit421>
-      <Unit422>
-        <Filename Value="gdbserverdebuggerinterface.pas"/>
-        <IsPartOfProject Value="True"/>
-        <UnitName Value="GDBServerDebuggerInterface"/>
-      </Unit422>
-      <Unit423>
-        <Filename Value="gdbserverconnectdialog.pas"/>
-        <IsPartOfProject Value="True"/>
-        <ComponentName Value="frmGDBServerConnectDialog"/>
-        <HasResources Value="True"/>
-        <ResourceBaseClass Value="Form"/>
-      </Unit423>
     </Units>
   </ProjectOptions>
   <CompilerOptions>
@@ -3074,7 +2733,7 @@
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);$(LazarusDir)\ide\include\$(TargetOS);$(LazarusDir)\images;$(LazarusDir)\ideintf\images"/>
-      <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide;betterControls"/>
+      <OtherUnitFiles Value="VEHDebug;dbk32;lua;jvdesign;$(LazarusDir)\designer;$(LazarusDir)\ide"/>
       <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Parsing>
@@ -3112,15 +2771,8 @@
       <CompilerMessages>
         <IgnoredMessages idx6058="True"/>
       </CompilerMessages>
-      <CustomOptions Value="-WB00400000
--dbenchmarkps
--dcemain
--dNDEBUG
--dDBVMFORAMDISWORKING
--dNESTEDSTRUCTURES
--donebytejumps
--dNoODS"/>
-      <OtherDefines Count="20">
+      <CustomOptions Value="-dbenchmarkps -dcemain -WB00400000 -dNDEBUG"/>
+      <OtherDefines Count="13">
         <Define0 Value="NOTMULTITHREADED"/>
         <Define1 Value="benchmarkps"/>
         <Define2 Value="cemain"/>
@@ -3134,82 +2786,7 @@
         <Define10 Value="memorymapped"/>
         <Define11 Value="privatebuild"/>
         <Define12 Value="DBVMFORAMDISWORKING"/>
-        <Define13 Value="NESTEDSTRUCTURES"/>
-        <Define14 Value="THREADNAMESUPPORT"/>
-        <Define15 Value="LINUXTCCTEST"/>
-        <Define16 Value="asserthexviewisthreadsafe"/>
-        <Define17 Value="DEBUGPROTOCOL"/>
-        <Define18 Value="NEWCHANGEREGONX86"/>
-        <Define19 Value="overflowdebug"/>
       </OtherDefines>
     </Other>
   </CompilerOptions>
-  <Debugging>
-    <Exceptions Count="19">
-      <Item1>
-        <Name Value="EAbort"/>
-        <Enabled Value="False"/>
-      </Item1>
-      <Item2>
-        <Name Value="ECodetoolError"/>
-        <Enabled Value="False"/>
-      </Item2>
-      <Item3>
-        <Name Value="EFOpenError"/>
-      </Item3>
-      <Item4>
-        <Name Value="Unknown"/>
-        <Enabled Value="False"/>
-      </Item4>
-      <Item5>
-        <Name Value="ERegistryException"/>
-      </Item5>
-      <Item6>
-        <Name Value="Exception"/>
-        <Enabled Value="False"/>
-      </Item6>
-      <Item7>
-        <Name Value="EConvertError"/>
-      </Item7>
-      <Item8>
-        <Name Value="symexception"/>
-      </Item8>
-      <Item9>
-        <Name Value="External: SIGILL"/>
-        <Enabled Value="False"/>
-      </Item9>
-      <Item10>
-        <Name Value="SIGILL"/>
-        <Enabled Value="False"/>
-      </Item10>
-      <Item11>
-        <Name Value="EAssemblerException"/>
-      </Item11>
-      <Item12>
-        <Name Value="EAutoAssembler"/>
-      </Item12>
-      <Item13>
-        <Name Value="EVariantError"/>
-      </Item13>
-      <Item14>
-        <Name Value="EFileMapError"/>
-      </Item14>
-      <Item15>
-        <Name Value="EParserError"/>
-      </Item15>
-      <Item16>
-        <Name Value="EProcess"/>
-        <Enabled Value="False"/>
-      </Item16>
-      <Item17>
-        <Name Value="ESavedScanException"/>
-      </Item17>
-      <Item18>
-        <Name Value="EAdvancedOptionsDuplicateException"/>
-      </Item18>
-      <Item19>
-        <Name Value="EDebuggerAttachException"/>
-      </Item19>
-    </Exceptions>
-  </Debugging>
 </CONFIG>

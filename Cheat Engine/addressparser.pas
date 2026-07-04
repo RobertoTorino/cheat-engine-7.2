@@ -32,12 +32,8 @@ type
     procedure seperator;
     procedure value;
 
-    procedure x86register;
+    procedure aregister;
     procedure e;
-    procedure arm_F;
-
-    procedure armregister;
-    procedure arm64register;
 
     function simplify3: boolean;
     function simplify2: boolean;
@@ -55,7 +51,7 @@ function getaddress(S: string):ptrUint; //for old code
 
 implementation
 
-uses memorybrowserformunit, StrUtils, ProcessHandlerUnit;
+uses memorybrowserformunit, StrUtils;
 
 
 procedure TAddressParser.seperator;
@@ -94,94 +90,10 @@ begin
   if count=0 then ch:=length(str)+1;   //it went to the end
 end;
 
-procedure TAddressParser.armregister;
-var
-  tmp: ptruint;
-  tmps: string;
-  c: PARMCONTEXT;
-
-  regnr: integer;
-  regnrstr: string;
-begin
-  if SpecialContext<>nil then
-    c:=PARMCONTEXT(SpecialContext)
-  else
-    c:=memorybrowser.context;
-
-  regnr:=-1;
-  if str[ch]='R' then
-  begin
-    regnrstr:='';
-    inc(ch);
-    while str[ch] in ['0'..'9'] do
-    begin
-      regnrstr:=regnrstr+str[ch];
-      inc(ch);
-    end;
-    regnr:=regnrstr.ToInteger;
-  end
-  else
-  if (str[ch]='F') and (str[ch+1]='P') then begin regnr:=11; inc(ch,2); end else
-  if (str[ch]='I') and (str[ch+1]='P') then begin regnr:=12; inc(ch,2); end else
-  if (str[ch]='S') and (str[ch+1]='P') then begin regnr:=13; inc(ch,2); end else
-  if (str[ch]='L') and (str[ch+1]='R') then begin regnr:=14; inc(ch,2); end else
-  if (str[ch]='P') and (str[ch+1]='C') then begin regnr:=15; inc(ch,2); end;
-
-  if regnr<>-1 then
-  begin
-    setlength(total,length(total)+1);
-    total[length(total)-1]:=1;  //value
-
-    setlength(values,length(values)+1);
-    values[length(values)-1]:=ptruint(@c^.R0)+sizeof(dword)*regnr;
-  end;
-end;
-
-procedure TAddressParser.arm64register;
-var
-  tmp: ptruint;
-  tmps: string;
-  c: PARMCONTEXT;
-
-  regnr: integer;
-  regnrstr: string;
-begin
-  if SpecialContext<>nil then
-    c:=PARMCONTEXT(SpecialContext)
-  else
-    c:=memorybrowser.context;
-
-  regnr:=-1;
-  if str[ch]='X' then
-  begin
-    regnrstr:='';
-    inc(ch);
-    while str[ch] in ['0'..'9'] do
-    begin
-      regnrstr:=regnrstr+str[ch];
-      inc(ch);
-    end;
-    regnr:=regnrstr.ToInteger;
-  end
-  else
-  if (str[ch]='S') and (str[ch+1]='P') then begin regnr:=31; inc(ch,2); end;
-
-  if regnr<>-1 then
-  begin
-    setlength(total,length(total)+1);
-    total[length(total)-1]:=1;  //value
-
-    setlength(values,length(values)+1);
-    values[length(values)-1]:=ptruint(@c^.R0)+sizeof(dword)*regnr;
-  end;
-end;
-
-procedure TAddressParser.x86register;
+procedure TAddressParser.aregister;
 var tmp: ptruint;
     tmps: string;
     c: Pcontext;
-    xregnrstr: string;
-    xregnr: integer;
 begin
 
   tmp:=0;
@@ -189,73 +101,42 @@ begin
   if SpecialContext<>nil then
     c:=SpecialContext
   else
-    c:=memorybrowser.context;
+    c:=@memorybrowser.lastdebugcontext;
 
-  if c=nil then raise exception.Create(rsAPThisIsNotAValidAddress);
-
-  if tmps[1] in ['X','Y'] then
-  begin
-    if tmps.Substring(1,2)='MM' then
-    begin
-      inc(ch,3);
-      xregnrstr:='';
-      while str[ch] in ['0'..'9'] do
-      begin
-        xregnrstr:=xregnrstr+str[ch];
-        inc(ch);
-      end;
-
-      xregnr:=xregnrstr.ToInteger;
-
-      setlength(total,length(total)+1);
-      total[length(total)-1]:=1;  //value
-
-      setlength(values,length(values)+1);
-      values[length(values)-1]:=pptruint(@c^.{$ifdef cpu64}FltSave.XmmRegisters[xregnr]{$else}ext.XMMRegisters[xregnr]{$endif})^;
-
-      exit;
-    end
-    else
-      raise exception.Create(rsAPThisIsNotAValidAddress);
-
-  end
+  if tmps='EAX' then tmp:=c.{$ifdef cpu64}rax{$else}eax{$endif} else
+  if tmps='EBX' then tmp:=c.{$ifdef cpu64}rbx{$else}ebx{$endif} else
+  if tmps='ECX' then tmp:=c.{$ifdef cpu64}rcx{$else}ecx{$endif} else
+  if tmps='EDX' then tmp:=c.{$ifdef cpu64}rdx{$else}edx{$endif} else
+  if tmps='ESI' then tmp:=c.{$ifdef cpu64}rsi{$else}esi{$endif} else
+  if tmps='EDI' then tmp:=c.{$ifdef cpu64}rdi{$else}edi{$endif} else
+  if tmps='EBP' then tmp:=c.{$ifdef cpu64}rbp{$else}ebp{$endif} else
+  if tmps='ESP' then tmp:=c.{$ifdef cpu64}rsp{$else}esp{$endif} else
+  if tmps='EIP' then tmp:=c.{$ifdef cpu64}rip{$else}eip{$endif}
+  {$ifdef cpu64}
   else
+  if tmps='RAX' then tmp:=c.rax else
+  if tmps='RBX' then tmp:=c.rbx else
+  if tmps='RCX' then tmp:=c.rcx else
+  if tmps='RDX' then tmp:=c.rdx else
+  if tmps='RSI' then tmp:=c.rsi else
+  if tmps='RDI' then tmp:=c.rdi else
+  if tmps='RBP' then tmp:=c.rbp else
+  if tmps='RSP' then tmp:=c.rsp else
+  if tmps='RIP' then tmp:=c.rip else
+  if tmps='R10' then tmp:=c.r10 else
+  if tmps='R11' then tmp:=c.r11 else
+  if tmps='R12' then tmp:=c.r12 else
+  if tmps='R13' then tmp:=c.r13 else
+  if tmps='R14' then tmp:=c.r14 else
+  if tmps='R15' then tmp:=c.r15 else
   begin
+    tmps:=copy(str,ch,2);
+    if tmps='R8' then tmp:=c.r8 else
+    if tmps='R9' then tmp:=c.r9;
+  end
+  {$endif}
+  ;
 
-    if tmps='EAX' then tmp:=c^.{$ifdef cpu64}rax{$else}eax{$endif} else
-    if tmps='EBX' then tmp:=c^.{$ifdef cpu64}rbx{$else}ebx{$endif} else
-    if tmps='ECX' then tmp:=c^.{$ifdef cpu64}rcx{$else}ecx{$endif} else
-    if tmps='EDX' then tmp:=c^.{$ifdef cpu64}rdx{$else}edx{$endif} else
-    if tmps='ESI' then tmp:=c^.{$ifdef cpu64}rsi{$else}esi{$endif} else
-    if tmps='EDI' then tmp:=c^.{$ifdef cpu64}rdi{$else}edi{$endif} else
-    if tmps='EBP' then tmp:=c^.{$ifdef cpu64}rbp{$else}ebp{$endif} else
-    if tmps='ESP' then tmp:=c^.{$ifdef cpu64}rsp{$else}esp{$endif} else
-    if tmps='EIP' then tmp:=c^.{$ifdef cpu64}rip{$else}eip{$endif}
-    {$ifdef cpu64}
-    else
-    if tmps='RAX' then tmp:=c^.rax else
-    if tmps='RBX' then tmp:=c^.rbx else
-    if tmps='RCX' then tmp:=c^.rcx else
-    if tmps='RDX' then tmp:=c^.rdx else
-    if tmps='RSI' then tmp:=c^.rsi else
-    if tmps='RDI' then tmp:=c^.rdi else
-    if tmps='RBP' then tmp:=c^.rbp else
-    if tmps='RSP' then tmp:=c^.rsp else
-    if tmps='RIP' then tmp:=c^.rip else
-    if tmps='R10' then tmp:=c^.r10 else
-    if tmps='R11' then tmp:=c^.r11 else
-    if tmps='R12' then tmp:=c^.r12 else
-    if tmps='R13' then tmp:=c^.r13 else
-    if tmps='R14' then tmp:=c^.r14 else
-    if tmps='R15' then tmp:=c^.r15 else
-    begin
-      tmps:=copy(str,ch,2);
-      if tmps='R8' then tmp:=c^.r8 else
-      if tmps='R9' then tmp:=c^.r9;
-    end
-    {$endif}
-    ;
-  end;
   setlength(total,length(total)+1);
   total[length(total)-1]:=1;  //value
 
@@ -266,25 +147,13 @@ begin
 end;
 
 
-procedure TAddressParser.arm_F;
-begin
-  if (ch+1<=length(str)) then  //could be FP
-  begin
-    case str[ch+1] of
-      'P' :armregister; //FP
-      else value;
-    end;
-  end
-  else value;
-end;
-
 procedure TAddressParser.E;
 //find out if this is a register or a value
 begin
   if (ch+2<=length(str)) then  //the 3th char of a reg is a X,I or P , so no A to F
   begin
     case str[ch+2] of
-      'X','I','P' :x86register;
+      'X','I','P' :aregister;
       else         value;
     end;
   end
@@ -415,7 +284,7 @@ begin
     if SpecialContext<>nil then
       c:=SpecialContext
     else
-      c:=memorybrowser.context;
+      c:=@memorybrowser.lastdebugcontext;
 
     result:=symhandler.getaddressfromname(s,false,haserror, c);
     if (result<>0) and (not haserror) then exit;
@@ -436,68 +305,22 @@ begin
   increase:=true;
   str:=uppercase(s);
 
-  if processhandler.SystemArchitecture=archX86 then
+
+  while ch<=length(s) do
   begin
-    while ch<=length(s) do
-    begin
-      case str[ch] of
-      '$'      :  begin
-                    inc(ch);
-                    value;
-                  end;
-      '0'..'9' :  value;
-      'A'..'D' :  value;
-      'E'      :  E;
-      'F'      :  value;
-      'R','X','Y': x86register;
+    case str[ch] of
+    '$'      :  begin
+                  inc(ch);
+                  value;
+                end;
+    '0'..'9' :  value;
+    'A'..'D' :  value;
+    'E'      :  E;
+    'F'      :  value;
+    'R'      :  aregister;
+    '+','-','*' :  seperator;
+    else        raise exception.Create(rsAPThisIsNotAValidAddress);
 
-      '+','-','*' :  seperator;
-      else        raise exception.Create(rsAPThisIsNotAValidAddress);
-
-      end;
-    end;
-  end
-  else
-  begin
-    //ARM
-    if processhandler.is64Bit then
-    begin
-      //arm64
-      while ch<=length(s) do
-      begin
-        case str[ch] of
-        '$'      :  begin
-                      inc(ch);
-                      value;
-                    end;
-        '0'..'9' :  value;
-        'A'..'F' :  value;
-        'X','S'  :  arm64register;  //X##, SP
-        '+','-','*' :  seperator;
-        else        raise exception.Create(rsAPThisIsNotAValidAddress);
-
-        end;
-      end;
-    end
-    else
-    begin
-      //arm32
-      while ch<=length(s) do
-      begin
-        case str[ch] of
-        '$'      :  begin
-                      inc(ch);
-                      value;
-                    end;
-        '0'..'9' :  value;
-        'A'..'E' :  value;
-        'F':        arm_F;
-        'R','S','L', 'P': armregister;  //R##, SP, LR, PC
-        '+','-','*' :  seperator;
-        else        raise exception.Create(rsAPThisIsNotAValidAddress);
-
-        end;
-      end;
     end;
   end;
 

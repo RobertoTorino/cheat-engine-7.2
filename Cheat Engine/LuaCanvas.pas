@@ -10,7 +10,7 @@ interface
 uses
   Classes, SysUtils, Graphics, GraphType, lua, lualib, lauxlib, LuaHandler, fpcanvas, LCLType, LCLIntf;
 
-procedure initializeLuaCanvas(L: Plua_State);
+procedure initializeLuaCanvas;
 procedure drawWithMask(DestCanvas:TCanvas; Dx,Dy,Dw,Dh:integer; graph:TRasterImage; Sx,Sy,Sw,Sh:integer);
 
 implementation
@@ -175,20 +175,9 @@ var
   canvas: TCanvas;
   x1,y1: integer;
   x2,y2: integer;
-  r: trect;
 begin
   result:=0;
   canvas:=luaclass_getClassObject(L);
-  if lua_gettop(L)=1 then
-  begin
-    //could be a rect
-    if lua_istable(L,1) then
-    begin
-      r:=lua_toRect(L,1);
-      canvas.FillRect(r);
-    end;
-  end
-  else
   if lua_gettop(L)>=4 then
   begin
     x1:=lua_tointeger(L,1);
@@ -206,23 +195,9 @@ var
   x1,y1: integer;
   x2,y2: integer;
   rx,ry: integer;
-  r: trect;
 begin
   result:=0;
   canvas:=luaclass_getClassObject(L);
-
-  if lua_gettop(L)=3 then
-  begin
-    if lua_istable(L,1) then
-    begin
-      r:=lua_toRect(L,1);
-      rx:=lua_tointeger(L,2);
-      ry:=lua_tointeger(L,3);
-
-      canvas.RoundRect(r,rx,ry);
-    end;
-  end
-  else
   if lua_gettop(L)>=6 then
   begin
     x1:=lua_tointeger(L,1);
@@ -643,28 +618,30 @@ begin
 end;
 
 procedure initializeLuaCanvas;
+var luavm: plua_state;
 begin
-  lua_register(L, 'canvas_getBrush', canvas_getBrush);
-  lua_register(L, 'canvas_getPen', canvas_getPen);
-  lua_register(L, 'canvas_getFont', canvas_getFont);
-  lua_register(L, 'canvas_getWidth', canvas_getWidth);
-  lua_register(L, 'canvas_getHeight', canvas_getHeight);
-  lua_register(L, 'canvas_line', canvas_line);
-  lua_register(L, 'canvas_lineTo', canvas_lineTo);
-  lua_register(L, 'canvas_rect', canvas_rect);
-  lua_register(L, 'canvas_fillRect', canvas_fillRect);
-  lua_register(L, 'canvas_textOut', canvas_textOut);
-  lua_register(L, 'canvas_getTextWidth', canvas_getTextWidth);
-  lua_register(L, 'canvas_getTextHeight', canvas_getTextHeight);
-  lua_register(L, 'canvas_getPixel', canvas_getPixel);
-  lua_register(L, 'canvas_setPixel', canvas_setPixel);
-  lua_register(L, 'canvas_floodFill', canvas_floodFill);
-  lua_register(L, 'canvas_ellipse', canvas_ellipse);
-  lua_register(L, 'canvas_gradientFill', canvas_gradientFill);
-  lua_register(L, 'canvas_copyRect', canvas_copyRect);
-  lua_register(L, 'canvas_draw', canvas_draw);
-  lua_register(L, 'canvas_getPenPosition', canvas_getPenPosition);
-  lua_register(L, 'canvas_setPenPosition', canvas_setPenPosition);
+  luavm:=GetLuaState;
+  lua_register(LuaVM, 'canvas_getBrush', canvas_getBrush);
+  lua_register(LuaVM, 'canvas_getPen', canvas_getPen);
+  lua_register(LuaVM, 'canvas_getFont', canvas_getFont);
+  lua_register(LuaVM, 'canvas_getWidth', canvas_getWidth);
+  lua_register(LuaVM, 'canvas_getHeight', canvas_getHeight);
+  lua_register(LuaVM, 'canvas_line', canvas_line);
+  lua_register(LuaVM, 'canvas_lineTo', canvas_lineTo);
+  lua_register(LuaVM, 'canvas_rect', canvas_rect);
+  lua_register(LuaVM, 'canvas_fillRect', canvas_fillRect);
+  lua_register(LuaVM, 'canvas_textOut', canvas_textOut);
+  lua_register(LuaVM, 'canvas_getTextWidth', canvas_getTextWidth);
+  lua_register(LuaVM, 'canvas_getTextHeight', canvas_getTextHeight);
+  lua_register(LuaVM, 'canvas_getPixel', canvas_getPixel);
+  lua_register(LuaVM, 'canvas_setPixel', canvas_setPixel);
+  lua_register(LuaVM, 'canvas_floodFill', canvas_floodFill);
+  lua_register(LuaVM, 'canvas_ellipse', canvas_ellipse);
+  lua_register(LuaVM, 'canvas_gradientFill', canvas_gradientFill);
+  lua_register(LuaVM, 'canvas_copyRect', canvas_copyRect);
+  lua_register(LuaVM, 'canvas_draw', canvas_draw);
+  lua_register(LuaVM, 'canvas_getPenPosition', canvas_getPenPosition);
+  lua_register(LuaVM, 'canvas_setPenPosition', canvas_setPenPosition);
 end;
 
 initialization

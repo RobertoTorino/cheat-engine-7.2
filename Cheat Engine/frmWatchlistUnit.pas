@@ -7,8 +7,7 @@ interface
 uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, ValEdit,
   ExtCtrls, ComCtrls, Menus, Clipbrd, NewKernelHandler, commonTypeDefs,strutils,
-  ProcessHandlerUnit, byteinterpreter{$ifdef darwin},macport, mactypes{$endif},
-  betterControls;
+  ProcessHandlerUnit, byteinterpreter{$ifdef darwin},macport, mactypes{$endif};
 
 type
 
@@ -68,11 +67,8 @@ resourcestring
 
 procedure TfrmWatchlist.UpdateContext(c: PContext);
 begin
-  if processhandler.SystemArchitecture=archX86 then
-  begin
-    context:=c;
-    RefreshValues;
-  end;
+  context:=c;
+  RefreshValues;
 end;
 
 procedure TfrmWatchlist.RefreshValues;

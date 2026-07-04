@@ -17,7 +17,7 @@ function lua_setProperty(L: PLua_state): integer; cdecl;
 
 implementation
 
-uses LuaClass, LuaHandler, pluginexports, LuaCaller, symbolhandler, LCLClasses, globals;
+uses LuaClass, LuaHandler, pluginexports, LuaCaller, symbolhandler;
 
 resourcestring
   rsThisIsAnInvalidClassOrMethodProperty = 'This is an invalid class or method property';
@@ -81,10 +81,6 @@ begin
     lua_pushstring(L, '__autodestroy');
     lua_pushboolean(L, false); //make it so it doesn't need to be destroyed (again)
     lua_settable(L, metatable);
-
-    lua_pushstring(L, '__destroyed'); //it has been destroyed, but the luaside needs to garbage collect it still
-    lua_pushboolean(L, true);
-    lua_settable(L, metatable);
   end;
 end;
 
@@ -142,11 +138,9 @@ begin
   if parameters=1 then
   begin
     c:=lua_toceuserdata(L, -1);
-
     lua_pop(L, lua_gettop(l));
 
     luaclass_newClass(L, ce_getPropertylist(c));
-
     result:=1;
   end else lua_pop(L, lua_gettop(l));
 end;
@@ -247,19 +241,6 @@ begin
       if p<>'' then
         c:=pointer(StrToInt64(p));
     end;
-
-
-    if threadsafetycheck and (c is TLCLComponent) then
-    begin
-      if GetCurrentThreadId<>MainThreadID then
-      begin
-        p:='';
-        v:='';
-        lua_pushstring(L, 'Error: GUI Control access outside of main thread ('+tcomponent(c).Name+':'+c.ClassName+')');
-        lua_error(L);
-      end;
-    end;
-
 
     p:=Lua_ToString(L, 2);
     v:=Lua_ToString(L, 3);

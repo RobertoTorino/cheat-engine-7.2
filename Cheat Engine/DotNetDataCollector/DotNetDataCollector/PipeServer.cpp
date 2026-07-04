@@ -58,7 +58,7 @@ CPipeServer::CPipeServer(TCHAR *name)
 	if (StrCmp(name,L"BLA")==0)
 	{
 		//do some debug stuff
-		processid=21228;
+		processid=65576;
 		OpenOrAttachToProcess();
 
 
@@ -97,8 +97,6 @@ CPipeServer::~CPipeServer(void)
 
 }
 
-BOOL SetProtection(int state);
-
 BOOL CPipeServer::OpenOrAttachToProcess(void)
 {
 	ICLRMetaHost *pMetaHost;
@@ -136,59 +134,8 @@ BOOL CPipeServer::OpenOrAttachToProcess(void)
 
 	//Try CE's bin path or the system library search path
 	StrCpyW(dotnetcorepath, L""); //init as empty string
-	HMODULE hDbgShim = NULL;
-
-	if (hDbgShim == NULL)
-	{
-		//try the "System.Runtime.dll" path
-		ths = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processid);
-
-		if (ths == INVALID_HANDLE_VALUE)
-		{
-			int e = GetLastError();
-			if (e == 5)
-			{
-				return TRUE;
-			}
-
-			return FALSE;
-		}
-
-		ZeroMemory(&m, sizeof(m));
-		m.dwSize = sizeof(m);
-		if (!Module32First(ths, &m))
-		{
-			CloseHandle(ths);
-			return FALSE;
-		}
-
-		do
-		{
-			if (wcscmp(m.szModule, L"System.Runtime.dll") == 0) {
-
-				int i;
-				int l = lstrlen(m.szExePath);
-
-				for (i = l; (i > 0) && (m.szExePath[i] != L'\\'); i--)
-					m.szExePath[i] = 0;
-
-				StrCpyW(dotnetcorepath, m.szExePath);
-
-				WCHAR dotnetcorepath_short[MAX_PATH];
-				WCHAR dbgshim_dllpath[MAX_PATH];
-				GetShortPathName(dotnetcorepath, dotnetcorepath_short, MAX_PATH); //fix space char or special characters
-
-				StrCpyW(dbgshim_dllpath, dotnetcorepath_short);
-				StrCatW(dbgshim_dllpath, L"dbgshim.dll");
-				hDbgShim = LoadLibrary(dbgshim_dllpath);
-				break;
-			}
-
-		} while (Module32Next(ths, &m));
-
-		CloseHandle(ths);
-	}
-
+	HMODULE hDbgShim = LoadLibraryA("dbgshim.dll");
+	
 	if (hDbgShim == NULL)
 	{
 		
@@ -221,13 +168,7 @@ BOOL CPipeServer::OpenOrAttachToProcess(void)
 					int maj, min, build;
 					DWORD val;
 
-					//.net core 7.0 moved dbgshim away, making that folder useless for finding a valid dbgshim.dll
-
-					WCHAR possibledllpath[MAX_PATH];
-
-					swprintf_s(possibledllpath, MAX_PATH, L"%s%s\\dbgshim.dll", basepath, ffd.cFileName);
-
-					if ((swscanf(ffd.cFileName, L"%d.%d.%d", &maj, &min, &build) == 3) && (PathFileExistsW(possibledllpath)))
+					if (swscanf(ffd.cFileName, L"%d.%d.%d", &maj, &min, &build) == 3)
 					{
 						val = (maj << 16) + (min << 8) + build;
 
@@ -259,8 +200,40 @@ BOOL CPipeServer::OpenOrAttachToProcess(void)
 
 	if (hDbgShim==NULL)
 	{
-		//try all env value path
-		hDbgShim = LoadLibraryA("dbgshim.dll");
+		//try the gamepath
+		ths = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, processid);
+		if (ths == INVALID_HANDLE_VALUE)
+		{
+			int e = GetLastError();
+			if (e == 5)
+			{
+				return TRUE;
+			}
+
+			return FALSE;
+		}
+
+		ZeroMemory(&m, sizeof(m));
+		m.dwSize = sizeof(m);
+		if (Module32First(ths, &m))
+		{
+			int i;
+			int l=lstrlen(m.szExePath);
+
+			for (i = l; (i > 0) && (m.szExePath[i] != L'\\') ; i--)
+				m.szExePath[i] = 0;				
+
+			StrCpyW(dotnetcorepath, m.szExePath);
+
+			WCHAR dllpath[MAX_PATH];
+			StrCpyW(dllpath, dotnetcorepath);
+			StrCatW(dllpath, L"dbgshim.dll");
+
+			hDbgShim = LoadLibrary(dllpath);
+
+		}
+
+		CloseHandle(ths);
 	}
 		
 	if (hDbgShim)
@@ -394,7 +367,7 @@ BOOL CPipeServer::OpenOrAttachToProcess(void)
 
 
 	//still here
-	return CorDebugProcess != NULL;
+	return TRUE;
 }
 
 
@@ -518,12 +491,13 @@ Enumerate the modules of the given ICorDebugAppDomain
 		TCHAR modulename[255];
 		ULONG32 modulenamelength;
 		CORDB_ADDRESS baseaddress;
-		mdModule ModuleToken;
 
 		WriteFile(pipehandle, &hModule, sizeof(hModule), &bw, NULL); //'handle'
 
+		//modulelist[i]->GetToken()
 		modulelist[i]->GetBaseAddress(&baseaddress);
 		WriteFile(pipehandle, &baseaddress, sizeof(baseaddress), &bw, NULL); //baseaddress  (uint64) 
+
 
 		if (modulelist[i]->GetName(255, &modulenamelength, modulename)==S_OK)
 			modulenamelength=sizeof(TCHAR)*modulenamelength;
@@ -771,7 +745,57 @@ void CPipeServer::enumMethodParameters(UINT64 hModule, mdMethodDef MethodDef)
 		int i;	
 		WriteDword(count);
 
+		{
+			mdTypeDef Class;
+			WCHAR methodname[255];
+			ULONG methodnamesize;
+			PCCOR_SIGNATURE sig;
+			ULONG sigsize;
+			ULONG rva;
+			DWORD flags;
+			ULONG dataOut[200];
+			ULONG dataLen;
 
+			
+			/*
+			nvm. Paramnames is good enough.  todo: inject in a .net dll that fetches that data using refelection (if it's really requested a lot)
+			if (MetaData->GetMethodProps(MethodDef, &Class, methodname, 255, &methodnamesize, &attribs, &sig, &sigsize, &rva, &flags) == S_OK)
+			{
+				int x;
+				ULONG pos = 0;
+				if (pos <= sigsize)
+				{
+
+					ULONG callconv = sig[pos];
+					pos++;
+
+					if (pos <= sigsize)
+					{
+						ULONG TypeArgCount;
+						if (callconv && IMAGE_CEE_CS_CALLCONV_GENERIC)
+						{
+							x = CorSigUncompressData(&sig[pos], &TypeArgCount);
+							pos += x;
+						}
+
+						ULONG ArgCount;
+						x = CorSigUncompressData(&sig[pos], &ArgCount);
+						pos += x;
+
+						ULONG ReturnType;
+						x=CorSigUncompressData(&sig[pos], &ReturnType);
+						pos += x;
+
+
+					}
+				}
+
+				
+			}*/
+			
+		}
+
+	
 
 		for (i = 0; i < count; i++)
 		{
@@ -870,7 +894,7 @@ void CPipeServer::enumTypeDefMethods(UINT64 hModule, mdTypeDef TypeDef)
 
 				if (module->GetFunctionFromToken(methods[i], &df)==S_OK)
 				{
-			 		ICorDebugCode *Code;
+					ICorDebugCode *Code;
 					if (df->GetILCode(&Code)==S_OK)
 					{
 						Code->GetAddress(&ILCode);
@@ -928,24 +952,21 @@ void CPipeServer::test(void)
 
 	enumAllObjects();
 
-	if (CorDebugProcess)
+
+	CorDebugProcess->EnumerateThreads(&te);
+
+	ICorDebugThread *thr;
+	count = 0;
+	te->Next(1, &thr, &count);
+
+	if (count)
 	{
+		ICorDebugFrame *frame = NULL;
+		thr->GetActiveFrame(&frame);
 
-		CorDebugProcess->EnumerateThreads(&te);
+		if (frame)		
+			OutputDebugStringW(L"WEEE");
 
-		ICorDebugThread *thr;
-		count = 0;
-		te->Next(1, &thr, &count);
-
-		if (count)
-		{
-			ICorDebugFrame *frame = NULL;
-			thr->GetActiveFrame(&frame);
-
-			if (frame)
-				OutputDebugStringW(L"WEEE");
-
-		}
 	}
 
 	//ICorDebugThread t;
@@ -1237,7 +1258,6 @@ void CPipeServer::sendType(COR_TYPEID cortypeid)
 			fields.clear();
 			fieldcount = getAllFields(cortypeid, layout, &fields);
 
-		
 			//send the fields
 			//if (CorDebugProcess5->GetTypeFields(objects[i].type, layout.numFields, fields, &fieldcount)==S_OK)
 			{
@@ -1254,7 +1274,7 @@ void CPipeServer::sendType(COR_TYPEID cortypeid)
 				unsigned char isStatic;				
 
 				//get the fields not in the layout
-				if ((metadata) && (classtoken))				
+				
 				{
 					HCORENUM fe=0;
 					mdFieldDef lfields[16];
@@ -1325,9 +1345,11 @@ void CPipeServer::sendType(COR_TYPEID cortypeid)
 					WriteFile(pipehandle, &fields[j].field.token, sizeof(fields[j].field.token), &bw, NULL);
 					WriteFile(pipehandle, &fields[j].field.offset, sizeof(fields[j].field.offset), &bw, NULL);
 					WriteFile(pipehandle, &fieldtype, sizeof(fieldtype), &bw, NULL);
+
 					//optional name:
 
-					WriteFile(pipehandle, &attr, sizeof(attr), &bw, NULL); //ce 7.5: Changed from writing just isStatic to the full attr
+					
+					WriteFile(pipehandle, &isStatic, 1, &bw, NULL);
 
 					fieldnamelength = sizeof(WCHAR)*fieldnamelength;
 

@@ -14,8 +14,7 @@ uses
   LCLIntf, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls,CEFuncProc, ExtCtrls, ComCtrls, Menus, NewKernelHandler, LResources,
   disassembler, symbolhandler, byteinterpreter, CustomTypeHandler, maps, math, Clipbrd,
-  addressparser, commonTypeDefs, DBK32functions, vmxfunctions, betterControls,
-  syncobjs, contexthandler;
+  addressparser, commonTypeDefs, DBK32functions, vmxfunctions;
 
 const
   cbDisplayTypeIndexByte=0;
@@ -29,39 +28,23 @@ const
 type
   TfrmChangedAddresses=class;
   TAddressEntry=class
-  private
-    fcontext: Pointer;
-    contexthandler: TContextInfo;
-
-    procedure setContext(c: pointer);
   public
     address: ptruint; //for whatever reason it could be used in the future
     base: ptruint;
-
+    context: TContext;
     stack: record
       stack: pbyte;
       savedsize: PtrUInt;
     end;
-
-    {$IFDEF WINDOWS}
-    ipt: record
-      log: pointer;
-      size: integer;
-    end;
-    {$ENDIF}
     count: integer;
 
     group: integer;
     owner: TfrmChangedAddresses;
 
-    changed: boolean;
-
     procedure fillBase;
     procedure savestack;
     constructor create(AOwner: TfrmChangedAddresses);
     destructor destroy; override;
-
-    property context: pointer read fContext write setContext;
   end;
 
 
@@ -88,8 +71,6 @@ type
     editCodeAddress: TEdit;
     labelCodeAddress: TLabel;
     lblInfo: TLabel;
-    miShowIPTLog: TMenuItem;
-    micbShowAsSigned: TMenuItem;
     miCodeAddressCopy: TMenuItem;
     miCopyValueToClipboard: TMenuItem;
     miCopyAddressToClipboard: TMenuItem;
@@ -141,7 +122,6 @@ type
     procedure miDissectClick(Sender: TObject);
     procedure miResetCountClick(Sender: TObject);
     procedure miScanForCommonalitiesClick(Sender: TObject);
-    procedure miShowIPTLogClick(Sender: TObject);
     procedure OKButtonClick(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure FormShow(Sender: TObject);
@@ -155,11 +135,11 @@ type
   private
     { Private declarations }
     hassetsizes: boolean;
-
+    addresslist: TMap;
     faddress: ptruint;
     defaultcolor: TColor;
 
-    fdebuggerinterfacewatchid: integer;
+    fdbvmwatchid: integer;
     {$ifdef windows}
     dbvmwatchpollthread: TDBVMWatchExecutePollThread;
     {$endif}
@@ -167,15 +147,13 @@ type
     currentFilter: string;
     currentFilterFunc: integer;
     filterExtraRegs: boolean;
-
-
     function checkFilter(entry: TaddressEntry): boolean;
     procedure rebuildListWithFilter;
 
     procedure stopdbvmwatch;
     procedure refetchValues(specificaddress: ptruint=0;countonly: boolean=false);
     procedure setAddress(a: ptruint);
-    procedure setdebuggerinterfacewatchid(id: integer);
+    procedure setdbvmwatchid(id: integer);
   public
     { Public declarations }
     equation: string;
@@ -183,19 +161,10 @@ type
 
     dbvmwatch_unlock: qword;
 
-    breakpoint: pointer;
-
-    addresslist: TMap;
-    addresslistCS: TCriticalSection;
-
-    foundcount: integer;
-
-    newRecord: TaddressEntry;
-
     procedure clearFilter;
     procedure AddRecord;
     property address: ptruint read fAddress write setAddress;
-    property debuggerinterfacewatchid: integer read fdebuggerinterfacewatchid write setdebuggerinterfacewatchid;
+    property dbvmwatchid: integer read fdbvmwatchid write setdbvmwatchid;
   end;
 
 
@@ -206,7 +175,7 @@ uses CEDebugger, MainUnit, frmRegistersunit, MemoryBrowserFormUnit, debughelper,
   debugeventhandler, debuggertypedefinitions, FoundCodeUnit, StructuresFrm2,
   ProcessHandlerUnit, Globals, Parsers, frmStackViewUnit, frmSelectionlistunit,
   frmChangedAddressesCommonalityScannerUnit, LastDisassembleData, lua, lauxlib,
-  lualib, luahandler, BreakpointTypeDef, DebuggerInterfaceAPIWrapper, iptlogdisplay;
+  lualib, luahandler;
 
 resourcestring
   rsStop='Stop';
@@ -229,23 +198,12 @@ resourcestring
   rsEnterLuaFormula = 'Enter a Lua formula to use to filter. E.g RCX==0x2301'
     +'adc0.  Empty for no filter';
 
-  rsNeedsIPTFindWhat = 'The debugger did not collect any IPT data. This may be due to the Intel PT feature not being enabled in settings/malfunctioning, or that the option to also log the trace in "find what..." results was disabled. Do you wish to enable this for this debugging session? You will need to recollect this information again though.'#13#10'(This is for this session only. If you wish to always turn it on from the start, go to settings->debugger options, and enable "Use Intel-PT feature" and the suboption for recording elements in "find what ..." routines)';
-
-
 
 
 destructor TAddressEntry.destroy;
 begin
   if stack.stack<>nil then
     freememandnil(stack.stack);
-
-  {$IFDEF WINDOWS}
-  if ipt.log<>nil then
-    freememandnil(ipt.log);
-  {$ENDIF}
-
-  if fcontext<>nil then
-    freememandnil(fcontext);
 
   inherited destroy;
 end;
@@ -255,41 +213,26 @@ begin
   owner:=aowner;
 end;
 
-procedure TAddressEntry.setContext(c: pointer);
-begin
-  if fcontext<>nil then
-    freememandnil(fcontext);
-
-  contexthandler:=getBestContextHandler;
-  fcontext:=contexthandler.getcopy(c);
-end;
-
-
 procedure TAddressEntry.fillBase;
 var ap: TAddressParser;
 begin
   if (base=0) and (owner<>nil) then
   begin
     ap:=TAddressParser.Create;
-    ap.setSpecialContext(fcontext);
+    ap.setSpecialContext(@context);
     base:=ap.getBaseAddress(owner.equation);
     ap.free;
   end;
 end;
 
 procedure TAddressEntry.savestack;
-var stackbase: ptruint;
 begin
   getmem(stack.stack, savedStackSize);
-  stackbase:=contexthandler.StackPointerRegister^.getValue(fcontext);
-
-
-
-  if ReadProcessMemory(processhandle, pointer(stackbase), stack.stack, savedStackSize, stack.savedsize)=false then
+  if ReadProcessMemory(processhandle, pointer(context.{$ifdef cpu64}Rsp{$else}esp{$endif}), stack.stack, savedStackSize, stack.savedsize)=false then
   begin
     //for some reason this sometimes returns 0 bytes read even if some of the bytes are readable.
-    stack.savedsize:=4096-(stackbase mod 4096);
-    ReadProcessMemory(processhandle, pointer(stackbase), stack.stack, stack.savedsize, stack.savedsize);
+    stack.savedsize:=4096-(context.{$ifdef cpu64}Rsp{$else}esp{$endif} mod 4096);
+    ReadProcessMemory(processhandle, pointer(context.{$ifdef cpu64}Rsp{$else}esp{$endif}), stack.stack, stack.savedsize, stack.savedsize);
   end;
 end;
 
@@ -408,7 +351,7 @@ begin
           end;
         end;
 
-        x.context:=@c;
+        x.context:=c;
 
         OutputDebugString('adding to the lists');
         s:=inttohex(address,8);
@@ -500,30 +443,65 @@ end;
 
 procedure TfrmChangedAddresses.AddRecord;
 var
+  haserror: boolean;
+  address: ptrUint;
+  i: integer;
   li: tlistitem;
+  currentthread: TDebugThreadHandler;
+
+  x: TaddressEntry;
+  s: string;
 begin
-  inc(foundcount);
-
-  if checkFilter(newRecord) then
+  //the debuggerthread is idle at this point
+  currentThread:=debuggerthread.CurrentThread;
+  if currentthread<>nil then
   begin
-    li:=changedlist.Items.add;
-    li.caption:=inttohex(newRecord.address,8);
-    li.SubItems.Add('');
-    li.subitems.add('1');
-    li.Data:=newRecord;
+    //get the instruction address
+    address:=symhandler.getAddressFromName(equation, false, haserror, currentthread.context);
+
+    if not hasError then
+    begin
+      //check if this address is already in the list
+      if addresslist.GetData(address, x) then
+      begin
+        inc(x.count);
+        refetchValues(x.address,true);
+        exit;
+      end;
+
+      s:=inttohex(address,8);
+
+      //and if not, add it
+
+      if (foundcodedialog=nil) or (changedlist.Items.Count<8) then
+      begin
+        x:=TAddressEntry.create(self);
+        x.context:=currentthread.context^;
+        x.address:=address;
+        x.count:=1;
+        x.savestack;
+        addresslist.Add(address, x);
+
+        if checkFilter(x) then
+        begin
+          li:=changedlist.Items.add;
+          li.caption:=s;
+          li.SubItems.Add('');
+          li.subitems.add('1');
+          li.Data:=x;
+        end;
+
+        refetchValues(x.address);
+
+        if foundcodedialog<>nil then
+        begin
+          TFoundCodeDialog(foundcodedialog).setChangedAddressCount(currentthread.context.{$ifdef cpu64}Rip{$else}eip{$endif});
+          if (changedlist.Items.Count>=8) then //remove this breakpoint
+            debuggerthread.FindWhatCodeAccessesStop(self);
+        end;
+      end;
+    end;
   end;
-  refetchValues(newRecord.address);
-
-  if foundcodedialog<>nil then
-  begin
-     //TFoundCodeDialog(foundcodedialog).setChangedAddressCount(contexthan
-    TFoundCodeDialog(foundcodedialog).setChangedAddressCount(newRecord.contexthandler.InstructionPointerRegister^.getValue(newrecord.context));
-
-    if (changedlist.Items.Count>=8) then //remove this breakpoint
-      debuggerthread.FindWhatCodeAccessesStop(self);
-  end;
-
-  debuggerthread.guiupdate:=true;
 end;
 
 
@@ -606,7 +584,7 @@ begin
         if changedlist.Items[i].Selected then
         begin
           ae:=changedlist.items[i].data;
-          ap.setSpecialContext(ae.fcontext);
+          ap.setSpecialContext(@ae.context);
           address:=ap.getBaseAddress(equation);
 
           maxoffset:=max(maxoffset, 8+strtoint64('$'+changedlist.Items[i].Caption)-address);
@@ -651,10 +629,8 @@ var i1, i2: TAddressEntry;
     d2: double absolute hex2;
     x: PtrUInt;
     varsize: integer;
-    signedcompare: boolean;
-begin
-  signedcompare:=micbShowAsSigned.checked;
 
+begin
   compare:=0;
   i1:=TAddressEntry(item1.data);
   i2:=TAddressEntry(item2.data);
@@ -712,16 +688,16 @@ begin
       else
       begin
         case cbDisplayType.itemindex of
-          cbDisplayTypeIndexByte: compare:=ifthen(signedcompare, CompareValue(Int8(hex), Int8(hex2)), CompareValue(Uint8(hex),Uint8(hex2)));
-          cbDisplayTypeIndexWord: compare:=ifthen(signedcompare, CompareValue(Int16(hex), Int16(hex2)), CompareValue(Uint16(hex),Uint16(hex2)));
-          cbDisplayTypeIndexDword: compare:=ifthen(signedcompare, CompareValue(Int32(hex), Int32(hex2)), CompareValue(Uint32(hex),Uint32(hex2)));
-          cbDisplayTypeIndexQword: compare:=ifthen(signedcompare, CompareValue(Int64(hex), Int64(hex2)), CompareValue(Uint64(hex),Uint64(hex2)));
+          cbDisplayTypeIndexByte: compare:=byte(hex)-byte(hex2);
+          cbDisplayTypeIndexWord: compare:=word(hex)-word(hex2);
+          cbDisplayTypeIndexDword: compare:=dword(hex)-dword(hex2);
+          cbDisplayTypeIndexQword: compare:=ULONG64(hex)-ULONG64(hex2);
           cbDisplayTypeIndexPointer:
             begin
               if processhandler.is64Bit then
-                compare:=ifthen(signedcompare, CompareValue(Int64(hex), Int64(hex2)), CompareValue(Uint64(hex),Uint64(hex2)))
+                compare:=ULONG64(hex)-ULONG64(hex2)
               else
-                compare:=ifthen(signedcompare, CompareValue(Int32(hex), Int32(hex2)), CompareValue(Uint32(hex),Uint32(hex2)));
+                compare:=dword(hex)-dword(hex2);
             end;
 
           cbDisplayTypeIndexSingle:
@@ -784,7 +760,7 @@ begin
       1: sender.Canvas.Font.color:=clBlue;
       2: sender.Canvas.Font.color:=clRed;
       else
-        sender.Canvas.Font.color:=clWindowtext;
+        sender.Canvas.Font.color:=defaultcolor;
     end;
   end
   else
@@ -902,7 +878,7 @@ function TfrmChangedAddresses.checkFilter(entry: TaddressEntry): boolean;
 begin
   if currentFilterFunc=-1 then exit(true);
 
-  LUA_SetCurrentContextState(0,entry.fcontext, filterExtraRegs);
+  LUA_SetCurrentContextState(0,@entry.context, filterExtraRegs);
   lua_rawgeti(LuaVM, LUA_REGISTRYINDEX, currentFilterFunc);
   if lua_pcall(LuaVM,0,1,0)=0 then
   begin
@@ -1144,40 +1120,6 @@ begin
   f.initlist;
 end;
 
-procedure TfrmChangedAddresses.miShowIPTLogClick(Sender: TObject);
-var
-  f: TfrmIPTLogDisplay;
-  ae: TAddressEntry;
-begin
-  {$IFDEF WINDOWS}
-  if changedlist.Selected=nil then exit;
-
-  ae:=TAddressEntry(changedlist.Selected.Data);
-
-  if (ae.ipt.log=nil) then
-  begin
-    if debuggerthread<>nil then
-    begin
-      if (useintelptfordebug=false) or (inteliptlogfindwhatroutines=false) then
-      begin
-        if messagedlg(rsNeedsIPTFindWhat, mtConfirmation, [mbyes,mbno],0)=mryes then
-        begin
-          useintelptfordebug:=true;
-          inteliptlogfindwhatroutines:=true;
-          debuggerthread.initIntelPTTracing;
-        end;
-      end;
-    end;
-  end
-  else
-  begin
-    f:=TfrmIPTLogDisplay.create(application);
-    f.show;
-    f.loadlog('log'+faddress.ToHexString+GetTickCount64.ToHexString, ae.ipt.log, ae.ipt.size, faddress);
-  end;
-  {$ENDIF}
-end;
-
 procedure TfrmChangedAddresses.miDeleteSelectedEntriesClick(Sender: TObject);
 var
   i: integer;
@@ -1215,31 +1157,13 @@ procedure TfrmChangedAddresses.FormClose(Sender: TObject;
 var temp:dword;
     i: integer;
     ae: TAddressEntry;
-    x: array of integer;
 begin
-  if OKButton.caption=rsStop then
-    OKButton.Click;
-
-  if breakpoint=nil then
+  if foundcodedialog=nil then
     action:=caFree
   else
-  begin
-    dec(pbreakpoint(breakpoint).referencecount);
-    action:=cahide;
-  end;
+    action:=caHide; //let the foundcodedialog free it
 
-  setlength(x,3);
-  x[0]:=changedlist.Column[0].Width;
-  x[1]:=changedlist.Column[1].Width;
-  x[2]:=changedlist.Column[2].Width;
 
-  saveformposition(self,x);
-
-  try
-    //rename so that the next created dialog can have this name
-    self.name:=self.name+'_tobedeleted'+inttohex(random(65535),4)+inttohex(random(65535),4)+inttohex(random(65535),4)+inttohex(random(65535),4)+'_'+inttohex(GetTickCount64,1);
-  except
-  end;
 
 end;
 
@@ -1305,9 +1229,6 @@ begin
   miDeleteSelectedEntries.enabled:=changedlist.SelCount>0;
 
   miDissect.enabled:=changedlist.SelCount>0;
-
-  micbShowAsSigned.Visible:=cbDisplayType.ItemIndex in [cbDisplayTypeIndexByte, cbDisplayTypeIndexWord, cbDisplayTypeIndexDword, cbDisplayTypeIndexQword];
-  micbShowAsSigned.Enabled:=not micbShowAsHexadecimal.checked;
 end;
 
 procedure TfrmChangedAddresses.refetchValues(specificaddress: ptruint=0; countonly: boolean=false);
@@ -1316,8 +1237,6 @@ var i: integer;
     handled: boolean;
     startindex: integer;
     stopindex: integer;
-
-    e: TAddressEntry;
 begin
   s:='';
   if changedlist.Items.Count>0 then
@@ -1329,32 +1248,31 @@ begin
 
     for i:=startindex to stopindex do
     begin
-      e:=TAddressEntry(changedlist.items[i].Data);
 
-      if (specificaddress<>0) and (e.address <> specificaddress) then //check if this is the line to update, if not, don't read and parse
+      if (specificaddress<>0) and (TAddressEntry(changedlist.items[i].Data).address <> specificaddress) then //check if this is the line to update, if not, don't read and parse
         continue;
 
       if countonly=false then
       begin
         case cbDisplayType.ItemIndex of
-          cbDisplayTypeIndexByte: s:=ReadAndParseAddress(e.address, vtByte,  nil, micbShowAsHexadecimal.checked, micbShowAsSigned.checked);
-          cbDisplayTypeIndexWord: s:=ReadAndParseAddress(e.address, vtWord,  nil, micbShowAsHexadecimal.checked, micbShowAsSigned.checked);
-          cbDisplayTypeIndexDword: s:=ReadAndParseAddress(e.address, vtDWord, nil, micbShowAsHexadecimal.checked, micbShowAsSigned.checked);
-          cbDisplayTypeIndexQword: s:=ReadAndParseAddress(e.address, vtQWord, nil, micbShowAsHexadecimal.checked, micbShowAsSigned.checked);
-          cbDisplayTypeIndexSingle: s:=ReadAndParseAddress(e.address, vtSingle,nil, micbShowAsHexadecimal.checked);
-          cbDisplayTypeIndexDouble: s:=ReadAndParseAddress(e.address, vtDouble,nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexByte: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtByte,  nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexWord: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtWord,  nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexDword: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtDWord, nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexQword: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtQWord, nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexSingle: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtSingle,nil, micbShowAsHexadecimal.checked);
+          cbDisplayTypeIndexDouble: s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtDouble,nil, micbShowAsHexadecimal.checked);
           cbDisplayTypeIndexPointer:
             begin
               if processhandler.is64Bit then
-                s:=ReadAndParseAddress(e.address, vtQWord, nil, true)
+                s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtQWord, nil, true)
               else
-                s:=ReadAndParseAddress(e.address, vtDWord, nil, true);
+                s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtDWord, nil, true);
             end;
 
           else
             begin
               //custom type
-              s:=ReadAndParseAddress(e.address, vtCustom, TCustomType(cbDisplayType.Items.Objects[cbDisplayType.ItemIndex]), micbShowAsHexadecimal.checked, micbShowAsSigned.checked);
+              s:=ReadAndParseAddress(TAddressEntry(changedlist.items[i].Data).address, vtCustom, TCustomType(cbDisplayType.Items.Objects[cbDisplayType.ItemIndex]), micbShowAsHexadecimal.checked);
             end;
         end;
 
@@ -1404,7 +1322,7 @@ begin
 
       ae:=TAddressEntry(changedlist.Selected.Data);
 
-      SetContextPointer(ae.context, ae.stack.stack, ae.stack.savedsize);
+      SetContextPointer(@ae.context, ae.stack.stack, ae.stack.savedsize);
 
       show;
     end;
@@ -1440,7 +1358,7 @@ procedure TfrmChangedAddresses.FormDestroy(Sender: TObject);
 var
   i: integer;
   ae: TAddressEntry;
-
+  x: array of integer;
 begin
   stopDBVMWatch();
 
@@ -1450,21 +1368,24 @@ begin
     ae.free;
   end;
 
+  if OKButton.caption=rsStop then
+    debuggerthread.FindWhatCodeAccessesStop(self);
 
+  setlength(x,3);
+  x[0]:=changedlist.Column[0].Width;
+  x[1]:=changedlist.Column[1].Width;
+  x[2]:=changedlist.Column[2].Width;
 
-
+  saveformposition(self,x);
   if addresslist<>nil then
-    freeandnil(addresslist);
-
-  if addresslistCS<>nil then
-    freeandnil(addresslistCS);
+    addresslist.Free;
 end;
 
 procedure TfrmChangedAddresses.FormCreate(Sender: TObject);
 var x: array of integer;
     i: integer;
 begin
-  fdebuggerinterfacewatchid:=-1;
+  fdbvmwatchid:=-1;
   currentFilterFunc:=-1;
   okbutton.caption:=rsStop;
 
@@ -1485,11 +1406,7 @@ begin
   for i:=0 to customTypes.count-1 do
     cbDisplayType.Items.AddObject(TCustomType(customTypes[i]).name, customTypes[i]);
 
-  addresslistCS:=TCriticalSection.Create;
   addresslist:=TMap.Create(ituPtrSize,sizeof(pointer));
-
-  miShowIPTLog.Visible:=systemSupportsIntelPT and not hideiptcapability and (CurrentDebuggerInterface<>nil) and CurrentDebuggerInterface.canUseIPT;
-
 end;
 
 procedure TfrmChangedAddresses.stopdbvmwatch;
@@ -1502,10 +1419,10 @@ begin
     freeandnil(dbvmwatchpollthread);
   end;
 
-  if debuggerinterfacewatchid<>-1 then
+  if dbvmwatchid<>-1 then
   begin
-    dbvm_watch_delete(debuggerinterfacewatchid);
-    debuggerinterfacewatchid:=-1;
+    dbvm_watch_delete(dbvmwatchid);
+    dbvmwatchid:=-1;
   end;
 
   if dbvmwatch_unlock<>0 then
@@ -1516,10 +1433,10 @@ begin
   {$ENDIF}
 end;
 
-procedure TfrmChangedAddresses.setdebuggerinterfacewatchid(id: integer);
+procedure TfrmChangedAddresses.setdbvmwatchid(id: integer);
 begin
   {$IFDEF windows}
-  fdebuggerinterfacewatchid:=id;
+  fdbvmwatchid:=id;
 
   if id<>-1 then
   begin

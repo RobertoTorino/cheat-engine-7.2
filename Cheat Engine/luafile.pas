@@ -7,20 +7,10 @@ interface
 uses
   Classes, SysUtils, DOM, zstream, math, custombase85, fgl, xmlutils;
 
-type
-  EDoNotFreeManually=class(Exception);
-  TProtectedMemoryStream=class(TMemoryStream)
-  private
-    canbedestroyed: boolean;
-  public
-    destructor Destroy; override;
-  end;
-
-  TLuafile=class
+type TLuafile=class
   private
     fname: string;
-    filedata: TProtectedMemoryStream;
-    fdonotsave: boolean;
+    filedata: TMemorystream;
   public
 
     constructor create(name: string; stream: TStream);
@@ -31,21 +21,12 @@ type
 
   published
     property name: string read fname write fname;
-    property stream: TProtectedMemoryStream read filedata;
-    property doNotSave: boolean read fdonotsave write fdonotsave;
+    property stream: TMemoryStream read filedata;
   end;
 
   TLuaFileList =  TFPGList<TLuafile>;
 
 implementation
-
-destructor TProtectedMemoryStream.Destroy;
-begin
-  if canbedestroyed then
-    inherited destroy
-  else
-    raise EDoNotFreeManually.create('You may not destroy this stream manually. Destroy the LuaFile instead');
-end;
 
 constructor TLuafile.createFromXML(node: TDOMNode);
 var s: string;
@@ -59,7 +40,7 @@ var s: string;
   a: TDOMNode;
 begin
   name:=node.NodeName;
-  filedata:=TProtectedMemorystream.create;
+  filedata:=TMemorystream.create;
 
   s:=node.TextContent;
 
@@ -69,11 +50,8 @@ begin
   begin
     a:=node.Attributes.GetNamedItem('Encoding');
     useascii85:=(a<>nil) and (a.TextContent='Ascii85');
-
-    a:=node.Attributes.GetNamedItem('Name');
-    if a<>nil then
-      name:=a.TextContent;
   end;
+
 
   if useascii85 then
   begin
@@ -91,8 +69,11 @@ begin
     HexToBin(pchar(s), b, size);
   end;
 
+
+
+
   try
-    m:=TMemoryStream.create;
+    m:=tmemorystream.create;
     m.WriteBuffer(b^, size);
     m.position:=0;
     dc:=Tdecompressionstream.create(m, true);
@@ -116,7 +97,6 @@ begin
 
   finally
     FreeMemAndNil(b);
-    FreeAndNil(m);
   end;
 end;
 
@@ -131,12 +111,7 @@ var
   n: TDOMNode;
   a: TDOMAttr;
   s: string;
-  xmlname: boolean;
-  i: integer;
-  namecount: integer;
 begin
-  if donotsave then exit;
-
   outputastext:=nil;
   //compress the file
   m:=tmemorystream.create;
@@ -152,14 +127,9 @@ begin
   BinToBase85(pchar(m.memory), outputastext, m.size);
 
   doc:=node.OwnerDocument;
-
-  n:=Node.AppendChild(doc.CreateElement('File'+node.ChildNodes.Count.ToString));
-
+  n:=Node.AppendChild(doc.CreateElement(name));
   n.TextContent:=outputastext;
 
-  a:=doc.createAttribute('Name');
-  a.TextContent:=name;
-  n.Attributes.SetNamedItem(a);
 
   a:=doc.CreateAttribute('Encoding');
   a.TextContent:='Ascii85';
@@ -171,9 +141,13 @@ end;
 
 constructor TLuafile.create(name: string; stream: tstream);
 begin
+  if not IsXmlName(name, true) then
+    name:='_'+name;
+
+
   self.name:=name;
 
-  filedata:=TProtectedMemorystream.create;
+  filedata:=tmemorystream.create;
   stream.position:=0;
   filedata.LoadFromStream(stream);
   filedata.position:=0;
@@ -182,10 +156,7 @@ end;
 destructor TLuafile.destroy;
 begin
   if filedata<>nil then
-  begin
-    filedata.canbedestroyed:=true;
     filedata.free;
-  end;
 
   inherited destroy;
 end;

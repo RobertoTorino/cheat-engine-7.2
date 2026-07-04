@@ -10,7 +10,7 @@ uses
   jwaNtStatus, Windows,
   Classes, SysUtils,symbolhandler, symbolhandlerstructs,
   VEHDebugSharedMem,cefuncproc, autoassembler,newkernelhandler,DebuggerInterface,
-  Clipbrd,maps;
+  Clipbrd;
 
 type
 
@@ -29,8 +29,7 @@ type
     is64bit: boolean; //stored local so it doesn't have to evaluate the property (saves some time)
     hasPausedProcess: boolean;
 
-    fisInjectedEvent: boolean; //obsolete(ish)
-    wasInjectedEvent: boolean;
+    fisInjectedEvent: boolean;
     injectedEvents: TList;
 
     lastthreadlist: TStringList;
@@ -40,8 +39,6 @@ type
 
     CurrentThread: THandle;
 
-    threads: TMap;  //internal threadhandle map
-
     procedure SynchronizeNoBreakList;
     procedure DoThreadPoll;
   public
@@ -50,8 +47,6 @@ type
     function ContinueDebugEvent(dwProcessId: DWORD; dwThreadId: DWORD; dwContinueStatus: DWORD): BOOL; override;
     function SetThreadContext(hThread: THandle; const lpContext: TContext; isFrozenThread: Boolean=false): BOOL; override;
     function GetThreadContext(hThread: THandle; var lpContext: TContext; isFrozenThread: Boolean=false):  BOOL; override;
-
-    function canUseIPT: boolean; override;
 
     function DebugActiveProcess(dwProcessId: DWORD): WINBOOL; override;
     function DebugActiveProcessStop(dwProcessID: DWORD): WINBOOL; override;
@@ -66,13 +61,13 @@ type
 implementation
 
 {$ifdef windows}
-uses ProcessHandlerUnit, Globals, dialogs, mainunit2;
+uses ProcessHandlerUnit, Globals, dialogs;
 
 resourcestring
   rsErrorWhileTryingToCreateTheConfigurationStructure = 'Error while trying '
     +'to create the configuration structure! (Which effectively renders this '
     +'whole feature useless) Errorcode=%s';
-  rsCheatEngineFailedToGetIntoTheConfig = strCheatEngine+' failed to get into '
+  rsCheatEngineFailedToGetIntoTheConfig = 'Cheat Engine failed to get into '
     +'the config of the selected program. (Error=%s)';
   rsFailureDuplicatingTheEventHandlesToTheOtherProcess = 'Failure duplicating '
     +'the event handles to the other process';
@@ -133,7 +128,7 @@ end;
 constructor TVEHDebugInterface.create;
 begin
   inherited create;
-  fDebuggerCapabilities:=fDebuggerCapabilities+[dbcSoftwareBreakpoint,dbcHardwareBreakpoint, dbcExceptionBreakpoint];
+  fDebuggerCapabilities:=[dbcSoftwareBreakpoint,dbcHardwareBreakpoint, dbcExceptionBreakpoint];
   name:='VEH Debugger';
 
   fmaxSharedBreakpointCount:=4;
@@ -143,8 +138,6 @@ begin
 
   lastthreadlist.Sorted:=true;
   lastthreadlist.Duplicates:=dupIgnore;
-
-  threads:=tmap.Create(ituPtrSize,sizeof(THandle));
 end;
 
 
@@ -166,9 +159,6 @@ begin
   if injectedEvents<>nil then
     freeandnil(InjectedEvents);
 
-  if threads<>nil then
-    freeandnil(threads);
-
   inherited destroy;
 end;
 
@@ -176,12 +166,11 @@ function TVEHDebugInterface.SetThreadContext(hThread: THandle; const lpContext: 
 var c: PContext;
 {$ifdef cpu64}
     c32: PContext32 absolute c;
-    i: integer;
 {$endif}
 begin
 
 
-  if (not wasInjectedEvent) and isFrozenThread then //use the VEHDebugView context
+  if isFrozenThread then //use the VEHDebugView context
   begin
     result:=true;
 
@@ -218,10 +207,7 @@ begin
       c32.SegSs:=lpcontext.SegSs;
 
       CopyMemory(@c32.ext, @lpContext.fltsave,sizeof(c32.ext));
-
-      for i:=0 to 7 do
-        CopyMemory(@c32.FloatSave.RegisterArea[i*10], @lpContext.fltsave.FloatRegisters[i], 10);
-
+      CopyMemory(@c32.FloatSave.RegisterArea[0], @lpContext.fltsave.FloatRegisters[0], 10*8);
     end else c^:=lpContext;
 
    // end;// else lpContext:=c^;
@@ -243,9 +229,9 @@ var c: PContext;
 {$endif}
 
 begin
-  if (not wasInjectedEvent) and isFrozenThread then //use the VEHDebugView context
+  if isFrozenThread then //use the VEHDebugView context
   begin
-    //OutputDebugString('VEH GetThreadContext. From frozen');
+    OutputDebugString('VEH GetThreadContext. From frozen');
     result:=true;
     c:=@VEHDebugView.CurrentContext[0];
     {$ifdef cpu64}
@@ -289,7 +275,7 @@ begin
   end
   else
   begin
-   // OutputDebugString('VEH GetThreadContext. not frozen');
+    OutputDebugString('VEH GetThreadContext. not frozen');
     result:=NewKernelHandler.GetThreadContext(hThread,lpContext);
   end;
 end;
@@ -306,19 +292,15 @@ var i: integer;
     c32: PContext32 absolute c;
 {$endif}
     inj: TInjectedEvent;
-    h: THandle;
 
-    r:dword;
 begin
   currentThread:=0;  //just making sure
 
-  fisInjectedEvent:=false;
-  wasInjectedEvent:=false;
   if injectedEvents.count>0 then
   begin
-    wasInjectedEvent:=true;
-
+    fisInjectedEvent:=true;
     //fill in lpDebugEvent
+
     inj:=TInjectedEvent(injectedEvents[0]);
     lpDebugEvent.dwProcessId:=processid;
     lpDebugEvent.dwThreadId:=inj.ThreadId;
@@ -326,46 +308,31 @@ begin
     if inj.eventtype=etThreadCreate then
     begin
       //create thread
-
       lpDebugEvent.dwDebugEventCode:=CREATE_THREAD_DEBUG_EVENT;
       lpDebugEvent.CreateThread.hThread:=OpenThread(THREAD_ALL_ACCESS,false, inj.ThreadId);
 
       lpDebugEvent.CreateThread.lpStartAddress:=nil;
       lpDebugEvent.CreateThread.lpThreadLocalBase:=nil;
 
-      if threads.GetData(lpDebugEvent.dwThreadId,currentthread)=false then
-      begin
-        CurrentThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
-        threads.Add(lpDebugEvent.dwThreadId, currentthread);
-      end;
-
-      if CurrentThread<>0 then
-      begin
-        suspendThread(CurrentThread);
-      end;
+      CurrentThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
+      suspendThread(CurrentThread);
     end
     else
     begin
       //destroy thread
       lpDebugEvent.dwDebugEventCode:=EXIT_THREAD_DEBUG_EVENT;
       lpDebugEvent.ExitThread.dwExitCode:=0;
-
-      if threads.GetData(lpDebugEvent.dwThreadId,h) then
-      begin
-        if h<>0 then
-          closehandle(h);
-        threads.Delete(lpDebugEvent.dwThreadId);
-      end;
     end;
 
     inj.free;
 
     injectedEvents.Delete(0);
     exit(true);
-  end;
+  end
+  else
+    fisInjectedEvent:=false;
 
-  r:=waitforsingleobject(HasDebugEvent, dwMilliseconds);
-  result:=r=WAIT_OBJECT_0;
+  result:=waitforsingleobject(HasDebugEvent, dwMilliseconds)=WAIT_OBJECT_0;
   if result then
   begin
     ZeroMemory(@lpDebugEvent, sizeof(TdebugEvent));
@@ -384,32 +351,18 @@ begin
         lpDebugEvent.dwDebugEventCode:=CREATE_PROCESS_DEBUG_EVENT;
         lpDebugEvent.CreateProcessInfo.hFile:=0;
         lpDebugEvent.CreateProcessInfo.hProcess:=processhandle;
-
-        if threads.GetData(lpDebugEvent.dwThreadId,lpDebugEvent.CreateProcessInfo.hThread)=false then
-        begin
-          lpDebugEvent.CreateProcessInfo.hThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
-          threads.Add(lpDebugEvent.dwThreadId,lpDebugEvent.CreateProcessInfo.hThread);
-        end;
-
-        currentthread:=lpDebugEvent.CreateProcessInfo.hThread;
-        suspendthread(CurrentThread);
+        lpDebugEvent.CreateProcessInfo.hThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
       end;
 
       $ce000001: //create thread
       begin
         lpDebugEvent.dwDebugEventCode:=CREATE_THREAD_DEBUG_EVENT;
-        if threads.GetData(lpDebugEvent.dwThreadId,lpDebugEvent.CreateThread.hThread)=false then
-        begin
-          lpDebugEvent.CreateThread.hThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
-          threads.Add(lpDebugEvent.dwThreadId, lpDebugEvent.CreateThread.hThread);
-        end;
+        lpDebugEvent.CreateThread.hThread:=OpenThread(THREAD_ALL_ACCESS,false, lpDebugEvent.dwThreadId);
         lpDebugEvent.CreateThread.lpStartAddress:=nil;
         lpDebugEvent.CreateThread.lpThreadLocalBase:=nil;
         lastthreadlist.Add(inttohex(lpDebugEvent.dwThreadId,1));
         lastthreadpoll:=GetTickCount64;
 
-        currentthread:=lpDebugEvent.CreateThread.hThread;
-        suspendthread(CurrentThread);
 
       end;
 
@@ -417,12 +370,6 @@ begin
       begin
         lpDebugEvent.dwDebugEventCode:=EXIT_THREAD_DEBUG_EVENT;
         lpDebugEvent.ExitThread.dwExitCode:=0;
-
-        if threads.GetData(lpDebugEvent.dwThreadId,h) then
-        begin
-          closehandle(h);
-          threads.Delete(lpDebugEvent.dwThreadId);
-        end;
 
         i:=lastthreadlist.indexof(inttohex(lpDebugEvent.dwThreadId,1));
         if i<>-1 then
@@ -454,6 +401,10 @@ begin
         {$ifdef cpu64}
         if is64bit then
         begin
+
+
+
+
           lpDebugEvent.Exception.ExceptionRecord.ExceptionCode:=VEHDebugView.Exception64.ExceptionCode;
           lpDebugEvent.Exception.ExceptionRecord.ExceptionFlags:=VEHDebugView.Exception64.ExceptionFlags;
           lpDebugEvent.Exception.ExceptionRecord.ExceptionRecord:=pointer(VEHDebugView.Exception64.ExceptionRecord);
@@ -506,19 +457,19 @@ end;
 function TVEHDebugInterface.ContinueDebugEvent(dwProcessId: DWORD; dwThreadId: DWORD; dwContinueStatus: DWORD): BOOL;
 begin
   hasPausedProcess:=false;
+  VEHDebugView.ContinueMethod:=dwContinueStatus;
+
+  if fisInjectedEvent then
+    fisInjectedEvent:=false
+  else
+    SetEvent(HasHandledDebugEvent);
 
   if currentthread<>0 then
   begin
     resumeThread(currentThread);
+    closeHandle(currentThread);
     currentThread:=0;
   end;
-
-  if wasInjectedEvent=false then
-  begin
-    VEHDebugView^.ContinueMethod:=dwContinueStatus;
-    SetEvent(HasHandledDebugEvent);
-  end;
-
 
   result:=true;
 end;
@@ -534,14 +485,9 @@ var
   err: boolean;
 begin
   try
-    debuggerAttachStatus:='Attaching VEH Debug';
-    if dwProcessID<>processhandler.processid then
-    begin
-      processhandler.processid:=dwProcessID;
-
-      Open_Process;
-      symhandler.reinitialize;
-    end;
+    processhandler.processid:=dwProcessID;
+    Open_Process;
+    symhandler.reinitialize;
 
     is64bit:=processhandler.is64Bit;
     if is64bit then
@@ -563,7 +509,7 @@ begin
 
     //guidstring:='Global\'+GUIDToString(guid);
     OutputDebugString('Creating filemap with name '+pchar(guidstring));
-    debuggerAttachStatus:='Creating filemap';
+
     ConfigFileMapping:=CreateFileMapping(INVALID_HANDLE_VALUE,nil,PAGE_READWRITE,0,sizeof(TVEHDebugSharedMem),pchar(guidstring));
 
     if ConfigFileMapping=0 then
@@ -595,8 +541,6 @@ begin
     HeartBeat.Priority:=tpHighest;
     HeartBeat.Start;
 
-    debuggerAttachStatus:='Started hearbeat';
-
     VEHDebugView.ThreadWatchMethod:=0; //vehthreadwatchmethod;
     if VEHRealContextOnThreadCreation then
       VEHDebugView.ThreadWatchMethodConfig:=TPOLL_TCREATEREALCONTEXT
@@ -608,7 +552,6 @@ begin
     HasDebugEvent:=CreateEvent(nil, false, false, nil);
     HasHandledDebugEvent:=CreateEvent(nil, false, false, nil);
 
-    debuggerAttachStatus:='Duplicating handles';
 
     if not DuplicateHandle(GetCurrentProcess, HasDebugEvent, processhandle, @VEHDebugView^.HasDebugEvent, 0, false, DUPLICATE_SAME_ACCESS) then
       raise exception.Create(
@@ -622,24 +565,19 @@ begin
       raise exception.Create(rsFailureDuplicatingTheFilemapping);
 
 
-    debuggerAttachStatus:='Waiting for kernel32';
+
     symhandler.waitforsymbolsloaded(true,'kernel32.dll');
 
-    debuggerAttachStatus:='fetching InitializeVEH symbol';
     testptr:=symhandler.getAddressFromName('"vehdebug'+prefix+'.InitializeVEH"',false,err);
     if err or (testptr=0) then
     begin
       try
-        debuggerAttachStatus:='Injecting vehdebug'+prefix+'.dll';
         InjectDll(cheatenginedir+'vehdebug'+prefix+'.dll');
       except
       end;
     end;
 
-
-    debuggerAttachStatus:='reloading symbols';
     symhandler.reinitialize;
-    debuggerAttachStatus:='waiting for symbols from vehdebug'+prefix+'.dll';
     symhandler.waitforsymbolsloaded(true,'vehdebug'+prefix+'.dll');
 
     testptr:=symhandler.getAddressFromName('"vehdebug'+prefix+'.InitializeVEH"');
@@ -659,18 +597,16 @@ begin
       s.Add('CreateThread("vehdebug'+prefix+'.InitializeVEH")');
 
       //Clipboard.SetTextBuf(pchar(s.text));
-      debuggerAttachStatus:='Assembling VEH injection script';
 
       if autoassemble(s,false) then
       begin
         //debugger is attached and ready to go
         active:=true;
         THeartBeat(Heartbeat).StartVersionCheck;
-        debuggerAttachStatus:='VEH injection script assembled succesful';
       end
       else
       begin
-        debuggerAttachStatus:='VEH injection script failed';
+
 //        showmessage(s.text);
       end;
 
@@ -679,11 +615,9 @@ begin
       s.free;
     end;
 
-    debuggerAttachStatus:='Ready';
   except
     on e: exception do
     begin
-      debuggerAttachStatus:='Exception: '+e.message;
       messagebox(0, pchar(e.message), pchar(utf8toansi(rsVEHDebugError)), MB_OK or MB_ICONERROR);
       result:=false;
     end;
@@ -796,12 +730,6 @@ begin
 
   lastthreadpoll:=GetTickCount64;
 end;
-
-function TVEHDebugInterface.canUseIPT: boolean;
-begin
-  canUseIPT:=true;
-end;
-
 {$endif}
 
 end.

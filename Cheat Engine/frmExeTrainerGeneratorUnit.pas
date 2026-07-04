@@ -13,7 +13,7 @@ uses
   {$endif}
   Classes, SysUtils, FileUtil, LResources, Forms, Controls, Graphics,
   ExtCtrls, dialogs, StdCtrls, ComCtrls, Menus, CEFuncProc, IconStuff, zstream,
-  registry, MainUnit2, symbolhandler, lua, lualib, lauxlib, betterControls;
+  registry, MainUnit2, symbolhandler, lua, lualib, lauxlib;
 
 
 type
@@ -39,8 +39,6 @@ type
     cbModPlayer: TCheckBox;
     cbD3DHook: TCheckBox;
     cbDotNet: TCheckBox;
-    cbCCode: TCheckBox;
-    cbIncludes: TCheckBox;
     comboCompression: TComboBox;
     GroupBox1: TGroupBox;
     GroupBox2: TGroupBox;
@@ -66,7 +64,6 @@ type
     procedure Button1Click(Sender: TObject);
     procedure btnGenerateTrainerClick(Sender: TObject);
     procedure Button3Click(Sender: TObject);
-    procedure cbCCodeChange(Sender: TObject);
     procedure cbTrainersizeChange(Sender: TObject);
     procedure FormActivate(Sender: TObject);
     procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);
@@ -89,7 +86,6 @@ type
     addedFiles: tstringlist;
 
     procedure addFile(filename: string; folder: string='');
-    procedure addFolder(basepath: string; folder: string='');
   public
     { public declarations }
     filename: string;
@@ -110,8 +106,7 @@ implementation
 
 { TfrmExeTrainerGenerator }
 
-uses MainUnit,ceguicomponents, OpenSave, Globals, LuaHandler, commonTypeDefs,
-  libcepack;
+uses MainUnit,ceguicomponents, OpenSave, Globals, LuaHandler;
 
 resourcestring
   rsSaving = 'Saving...';
@@ -157,36 +152,6 @@ begin
     7: result:='/';
   end;
 
-end;
-
-procedure TfrmExeTrainerGenerator.addFolder(basepath: string; folder: string='');
-var
-  dirinfo: TSearchRec;
-  r: integer;
-begin
-  if (folder<>'') and ((folder[1]='\') or (folder[1]='/')) then
-    folder:='';
-
-  if basepath.EndsWith(PathDelim)=false then
-    basepath:=basepath+PathDelim;
-
-  zeromemory(@dirinfo, sizeof(TSearchRec));
-  r := FindFirst(basepath+'*.*', FaAnyfile, DirInfo);
-  while (r = 0) do
-  begin
-    if (DirInfo.Attr and FaVolumeId <> FaVolumeID) then
-    begin
-      if ((DirInfo.Attr and FaDirectory) <> FaDirectory) then
-        addFile(basepath+DirInfo.Name, folder)
-      else
-      begin
-        if (DirInfo.Name[1]<>'.') then
-          addFolder(basepath + DirInfo.Name, folder+PathDelim+dirinfo.name);
-      end;
-    end;
-
-    r := FindNext(DirInfo);
-  end;
 end;
 
 procedure TfrmExeTrainerGenerator.addFile(filename: string; folder: string='');
@@ -267,321 +232,295 @@ var DECOMPRESSOR: TMemorystream;
 
 begin
   {$ifdef windows}
+  addedfiles:=tstringlist.create;
+
+  tiny:=cbTiny.Checked;
+
+  CETRAINER:=ExtractFilePath(filename)+'CET_TRAINER.CETRAINER';
+
+  if tiny then
+  begin
+    //temporarily insert this in front of the lua script
+    MainForm.frmLuaTableScript.assemblescreen.BeginUpdate;
+    MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(0, 'RequiredCEVersion='+floattostr(ceversion));
+    MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(1, 'if (getCEVersion==nil) or (getCEVersion()<RequiredCEVersion) then');
+    MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(2, '  messageDialog(''Please install Cheat Engine ''..RequiredCEVersion, mtError, mbOK)');
+    MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(3, '  closeCE()');
+    MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(4, 'end');
+  end;
+
+
   try
-    addedfiles:=tstringlist.create;
-
-    tiny:=cbTiny.Checked;
-
-    CETRAINER:=ExtractFilePath(filename)+'CET_TRAINER.CETRAINER';
-
+    SaveTable(CETRAINER, true);
+  finally
     if tiny then
     begin
-      //temporarily insert this in front of the lua script
-      MainForm.frmLuaTableScript.assemblescreen.BeginUpdate;
-      MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(0, 'RequiredCEVersion='+floattostr(ceversion));
-      MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(1, 'if (getCEVersion==nil) or (getCEVersion()<RequiredCEVersion) then');
-      MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(2, '  messageDialog(''Please install '+strCheatEngine+' ''..RequiredCEVersion, mtError, mbOK)');
-      MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(3, '  closeCE()');
-      MainForm.frmLuaTableScript.assemblescreen.Lines.Insert(4, 'end');
+      //undo that addition
+      for i:=0 to 4 do
+        MainForm.frmLuaTableScript.assemblescreen.Lines.Delete(0);
+
+      MainForm.frmLuaTableScript.assemblescreen.EndUpdate;
     end;
+  end;
 
 
-    try
-      SaveTable(CETRAINER, true);
-    finally
-      if tiny then
+
+  btnGenerateTrainer.caption:=rsSaving+rot;
+  btnGenerateTrainer.enabled:=false;
+  saving:=true;
+
+  application.ProcessMessages;
+  try
+    if tiny then basefile:='tiny' else basefile:='standalonephase1';
+
+    if CopyFile(cheatenginedir+basefile+'.dat', filename) then
+    begin
+      updatehandle:=BeginUpdateResourceA(pchar(filename), false);
+      if updatehandle<>0 then
       begin
-        //undo that addition
-        for i:=0 to 4 do
-          MainForm.frmLuaTableScript.assemblescreen.Lines.Delete(0);
+        _archive:=TMemorystream.create; //create the archive
 
-        MainForm.frmLuaTableScript.assemblescreen.EndUpdate;
-      end;
-    end;
-
-
-
-    btnGenerateTrainer.caption:=rsSaving+rot;
-    btnGenerateTrainer.enabled:=false;
-    saving:=true;
-
-    application.ProcessMessages;
-    try
-      if tiny then basefile:='tiny' else basefile:='standalonephase1';
-
-      if (fileexists(cheatenginedir+basefile+'.dat')=false) then
-      begin
-        if (fileexists(cheatenginedir+basefile+'.cepack')) then
-          ceunpackfile(cheatenginedir+basefile+'.cepack', cheatenginedir+basefile+'.dat', true);
-      end;
-
-      if CopyFile(cheatenginedir+basefile+'.dat', filename) then
-      begin
-        updatehandle:=BeginUpdateResourceA(pchar(filename), false);
-        if updatehandle<>0 then
+        if not tiny then
         begin
-          _archive:=TMemorystream.create; //create the archive
+          //all files go into a compressed archive
 
-          if not tiny then
+          filecount:=0;
+          _archive.WriteBuffer(filecount, sizeof(filecount)); //allocate space for the filecount  (omg trainers will be thirtytwo bits longer!)
+
+          case comboCompression.itemindex of
+            0: compression:=clnone;
+            1: compression:=clfastest;
+            2: compression:=cldefault;
+            3: compression:=clmax;
+          end;
+
+          archive:=Tcompressionstream.create(compression, _archive, true);
+
+
+          decompressor:=TMemorystream.create;
+          decompressor.LoadFromFile(cheatenginedir+'standalonephase2.dat');
+
+          addfile(CETRAINER);
+          deletefile(cetrainer);
+
+          //first the custom files (this way you can override files with your own from other folders)
+          for i:=0 to listview1.Items.Count-1 do
+            addfile(TFileData(listview1.items[i].data).filepath, TFileData(listview1.items[i].data).folder);
+
+          addfile(cheatenginedir+'defines.lua');
+
+          if rb32.checked then
           begin
-            //all files go into a compressed archive
+            addfile(cheatenginedir+'cheatengine-i386.exe');
 
-            filecount:=0;
-            _archive.WriteBuffer(filecount, sizeof(filecount)); //allocate space for the filecount  (omg trainers will be thirtytwo bits longer!)
+            addfile(cheatenginedir+'lua53-32.dll');
+            addfile(cheatenginedir+'win32\dbghelp.dll','win32');
 
-            case comboCompression.itemindex of
-              0: compression:=clnone;
-              1: compression:=clfastest;
-              2: compression:=cldefault;
-              3: compression:=clmax;
+            if cbSpeedhack.checked then
+              addfile(cheatenginedir+'speedhack-i386.dll');
+
+            if cbvehdebug.checked then
+              addfile(cheatenginedir+'vehdebug-i386.dll');
+
+            if cbKernelDebug.checked then
+            begin
+              addfile(cheatenginedir+'dbk32.sys');
+              addfile(cheatenginedir+'dbk64.sys');
+              addfile(cheatenginedir+'cheatengine-i386.exe.sig');
             end;
 
-            archive:=Tcompressionstream.create(compression, _archive, true);
-
-
-            decompressor:=TMemorystream.create;
-
-            if (fileexists(cheatenginedir+'standalonephase2.dat')=false) and
-               (fileexists(cheatenginedir+'standalonephase2.cepack')) then
-              ceunpackfile(cheatenginedir+'standalonephase2.cepack', cheatenginedir+'standalonephase2.dat', true);
-
-            decompressor.LoadFromFile(cheatenginedir+'standalonephase2.dat');
-
-            addfile(CETRAINER);
-            deletefile(cetrainer);
-
-            //first the custom files (this way you can override files with your own from other folders)
-            for i:=0 to listview1.Items.Count-1 do
-              addfile(TFileData(listview1.items[i].data).filepath, TFileData(listview1.items[i].data).folder);
-
-            addfile(cheatenginedir+'defines.lua');
-
-            if rb32.checked then
-            begin
-              addfile(cheatenginedir+'cheatengine-i386.exe');
-
-              addfile(cheatenginedir+'lua53-32.dll');
-              addfile(cheatenginedir+'win32\dbghelp.dll','win32');
-
-              if cbSpeedhack.checked then
-                addfile(cheatenginedir+'speedhack-i386.dll');
-
-              if cbvehdebug.checked then
-                addfile(cheatenginedir+'vehdebug-i386.dll');
-
-              if cbKernelDebug.checked then
-              begin
-                addfile(cheatenginedir+'dbk32.sys');
-                addfile(cheatenginedir+'dbk64.sys');
-                addfile(cheatenginedir+'cheatengine-i386.exe.sig');
-              end;
-
-              if cbModPlayer.checked then
-                addfile(cheatenginedir+'libmikmod32.dll');
-
-
-              if cbCCode.checked then
-                addfile(cheatenginedir+'tcc32-32.dll');
-            end
-            else
-            begin
-              addfile(cheatenginedir+'cheatengine-x86_64.exe');
-              addfile(cheatenginedir+'lua53-64.dll');
-
-              if cbSpeedhack.checked then
-                addfile(cheatenginedir+'speedhack-x86_64.dll');
-
-              if cbvehdebug.checked then
-                addfile(cheatenginedir+'vehdebug-x86_64.dll');
-
-              if cbKernelDebug.checked then
-              begin
-                addfile(cheatenginedir+'dbk64.sys');
-                addfile(cheatenginedir+'cheatengine-x86_64.exe.sig');
-              end;
-
-              if cbModPlayer.checked then
-                addfile(cheatenginedir+'libmikmod64.dll');
-
-              if cbCCode.checked then
-                addfile(cheatenginedir+'tcc64-64.dll');
-            end;
-
-            if cbIncludes.checked then
-              addfolder(cheatenginedir+'include','include');
-
-
-            if cbDotNet.checked then
-            begin
-              addfile(cheatenginedir+'DotNetDataCollector32.exe');
-              addfile(cheatenginedir+'DotNetDataCollector64.exe');
-            end;
-
-            if cbD3DHook.checked then
-            begin
-              addfile(cheatenginedir+'overlay.fx');
-              if rb32.checked then
-              begin
-                addfile(cheatenginedir+'d3dhook.dll');
-                addfile(cheatenginedir+'ced3d9hook.dll');
-                addfile(cheatenginedir+'ced3d10hook.dll');
-                addfile(cheatenginedir+'ced3d11hook.dll');
-              end
-              else
-              begin
-                addfile(cheatenginedir+'d3dhook64.dll');
-                addfile(cheatenginedir+'ced3d9hook64.dll');
-                addfile(cheatenginedir+'ced3d10hook64.dll');
-                addfile(cheatenginedir+'ced3d11hook64.dll');
-              end;
-            end;
-
-            //do the exe trainer features
-            for i:=0 to length(exeTrainerFeatures)-1 do
-              if (exeTrainerFeatures[i].cb<>nil) and exeTrainerFeatures[i].cb.checked then
-              begin
-                try
-                  ltop:=lua_gettop(luavm);
-                  lua_rawgeti(luavm, LUA_REGISTRYINDEX, exeTrainerFeatures[i].functionid) ;
-                  if lua_pcall(luavm, 0,1,0)=0 then
-                  begin
-                    if lua_istable(luavm,-1) then
-                    begin
-                      t:=lua_gettop(luavm);
-                      for j:=1 to lua_objlen(luavm, t) do
-                      begin
-                        lua_pushinteger(luavm, j);
-                        lua_gettable(luavm, t);
-                        if lua_istable(luavm, -1) then
-                        begin
-                          t2:=lua_gettop(Luavm);
-                          lua_pushstring(Luavm,'PathToFile');
-                          lua_gettable(Luavm, t2);
-                          if lua_isstring(Luavm, -1) then
-                            filepath:=Lua_ToString(LuaVM,-1)
-                          else
-                            filepath:='';
-
-                          lua_pop(luavm,1);
-
-                          if filepath<>'' then
-                          begin
-                            lua_pushstring(Luavm,'RelativePath');
-                            lua_gettable(Luavm, t2);
-                            if lua_isstring(Luavm, -1) then
-                              relpath:=Lua_ToString(LuaVM,-1)
-                            else
-                              relpath:='';
-
-                            lua_pop(luavm,1);
-
-                            addFile(filepath,relpath);
-                          end;
-
-                        end;
-                        lua_pop(luavm,1);
-                      end;
-                    end;
-                  end;
-
-                finally
-                  lua_settop(luavm,ltop);
-                end;
-              end;
-
-            archive.free;
-
-            pinteger(_archive.Memory)^:=filecount;  //fill in the count (uncompressed)
-
+            if cbModPlayer.checked then
+              addfile(cheatenginedir+'libmikmod32.dll');
 
           end
           else
-            _archive.LoadFromFile(CETRAINER); //tiny version has the .cetrainer only
+          begin
+            addfile(cheatenginedir+'cheatengine-x86_64.exe');
+            addfile(cheatenginedir+'lua53-64.dll');
 
+            if cbSpeedhack.checked then
+              addfile(cheatenginedir+'speedhack-x86_64.dll');
 
-          {_Archive.SaveToFile('c:\bla.dat');}
+            if cbvehdebug.checked then
+              addfile(cheatenginedir+'vehdebug-x86_64.dll');
 
-          try
-
-            if not UpdateResourceA(updatehandle, RT_RCDATA, 'ARCHIVE', 0, _archive.memory, _archive.size) then
-              raise exception.create(rsFailureOnWriting+rsARCHIVE+inttostr(
-                getlasterror()));
-
-            if not tiny then
+            if cbKernelDebug.checked then
             begin
-              //tiny has no decompressor
-              if not UpdateResourceA(updatehandle, RT_RCDATA, 'DECOMPRESSOR', 0, decompressor.memory, decompressor.size) then
-                raise exception.create(rsFailureOnWriting+rsDECOMPRESSOR+inttostr(
-                  getlasterror()));
+              addfile(cheatenginedir+'dbk64.sys');
+              addfile(cheatenginedir+'cheatengine-x86_64.exe.sig');
             end;
 
-            icon:=tmemorystream.create;
-            try
-              image1.picture.icon.SaveToStream(icon);
-             // sizeof(TBitmapInfoHeader)
+            if cbModPlayer.checked then
+              addfile(cheatenginedir+'libmikmod64.dll');
 
-              //GetIconInfo();
+          end;
 
-              z:=TIcon.create;
-             // z.LoadFromFile('F:\svn\favicon.ico');
-              //z.SaveToStream(icon);
+          if cbDotNet.checked then
+          begin
+            addfile(cheatenginedir+'DotNetDataCollector32.exe');
+            addfile(cheatenginedir+'DotNetDataCollector64.exe');
+          end;
 
-              ii:=icon.memory;
+          if cbD3DHook.checked then
+          begin
+            addfile(cheatenginedir+'overlay.fx');
+            if rb32.checked then
+            begin
+              addfile(cheatenginedir+'d3dhook.dll');
+              addfile(cheatenginedir+'ced3d9hook.dll');
+              addfile(cheatenginedir+'ced3d10hook.dll');
+              addfile(cheatenginedir+'ced3d11hook.dll');
+            end
+            else
+            begin
+              addfile(cheatenginedir+'d3dhook64.dll');
+              addfile(cheatenginedir+'ced3d9hook64.dll');
+              addfile(cheatenginedir+'ced3d10hook64.dll');
+              addfile(cheatenginedir+'ced3d11hook64.dll');
+            end;
+          end;
 
-              if ii.idType=1 then
-              begin
-                if ii.idCount>0 then
+          //do the exe trainer features
+          for i:=0 to length(exeTrainerFeatures)-1 do
+            if (exeTrainerFeatures[i].cb<>nil) and exeTrainerFeatures[i].cb.checked then
+            begin
+              try
+                ltop:=lua_gettop(luavm);
+                lua_rawgeti(luavm, LUA_REGISTRYINDEX, exeTrainerFeatures[i].functionid) ;
+                if lua_pcall(luavm, 0,1,0)=0 then
                 begin
-                  //update the icon
-                  if not updateResourceA(updatehandle,pchar(RT_ICON),MAKEINTRESOURCE(1),1033, pointer(ptruint(icon.Memory)+ii.icondirentry[0].dwImageOffset), ii.icondirentry[0].dwBytesInRes) then
-                    raise exception.create(rsIconUpdateError+' 2');
+                  if lua_istable(luavm,-1) then
+                  begin
+                    t:=lua_gettop(luavm);
+                    for j:=1 to lua_objlen(luavm, t) do
+                    begin
+                      lua_pushinteger(luavm, j);
+                      lua_gettable(luavm, t);
+                      if lua_istable(luavm, -1) then
+                      begin
+                        t2:=lua_gettop(Luavm);
+                        lua_pushstring(Luavm,'PathToFile');
+                        lua_gettable(Luavm, t2);
+                        if lua_isstring(Luavm, -1) then
+                          filepath:=Lua_ToString(LuaVM,-1)
+                        else
+                          filepath:='';
 
-                  //update the group
-                  gii.idCount:=1;
-                  gii.icondirentry[0].id:=1;
-                  if not updateResourceA(updatehandle,pchar(RT_GROUP_ICON),MAKEINTRESOURCE(101),1033, gii, sizeof(TGRPICONDIR)+sizeof(TGRPICONDIRENTRY)) then
-                    raise exception.create(rsIconUpdateError+' 3');
+                        lua_pop(luavm,1);
+
+                        if filepath<>'' then
+                        begin
+                          lua_pushstring(Luavm,'RelativePath');
+                          lua_gettable(Luavm, t2);
+                          if lua_isstring(Luavm, -1) then
+                            relpath:=Lua_ToString(LuaVM,-1)
+                          else
+                            relpath:='';
+
+                          lua_pop(luavm,1);
+
+                          addFile(filepath,relpath);
+                        end;
+
+                      end;
+                      lua_pop(luavm,1);
+                    end;
+                  end;
+                end;
+
+              finally
+                lua_settop(luavm,ltop);
+              end;
+            end;
+
+          archive.free;
+
+          pinteger(_archive.Memory)^:=filecount;  //fill in the count (uncompressed)
 
 
-                end
-                else
-                  raise exception.create(rsIconUpdateError+' 4 '+rsInvalidIcon);
+        end
+        else
+          _archive.LoadFromFile(CETRAINER); //tiny version has the .cetrainer only
+
+
+        {_Archive.SaveToFile('c:\bla.dat');}
+
+        try
+
+          if not UpdateResourceA(updatehandle, RT_RCDATA, 'ARCHIVE', 0, _archive.memory, _archive.size) then
+            raise exception.create(rsFailureOnWriting+rsARCHIVE+inttostr(
+              getlasterror()));
+
+          if not tiny then
+          begin
+            //tiny has no decompressor
+            if not UpdateResourceA(updatehandle, RT_RCDATA, 'DECOMPRESSOR', 0, decompressor.memory, decompressor.size) then
+              raise exception.create(rsFailureOnWriting+rsDECOMPRESSOR+inttostr(
+                getlasterror()));
+          end;
+
+          icon:=tmemorystream.create;
+          try
+            image1.picture.icon.SaveToStream(icon);
+           // sizeof(TBitmapInfoHeader)
+
+            //GetIconInfo();
+
+            z:=TIcon.create;
+           // z.LoadFromFile('F:\svn\favicon.ico');
+            //z.SaveToStream(icon);
+
+            ii:=icon.memory;
+
+            if ii.idType=1 then
+            begin
+              if ii.idCount>0 then
+              begin
+                //update the icon
+                if not updateResourceA(updatehandle,pchar(RT_ICON),MAKEINTRESOURCE(1),1033, pointer(ptruint(icon.Memory)+ii.icondirentry[0].dwImageOffset), ii.icondirentry[0].dwBytesInRes) then
+                  raise exception.create(rsIconUpdateError+' 2');
+
+                //update the group
+                gii.idCount:=1;
+                gii.icondirentry[0].id:=1;
+                if not updateResourceA(updatehandle,pchar(RT_GROUP_ICON),MAKEINTRESOURCE(101),1033, gii, sizeof(TGRPICONDIR)+sizeof(TGRPICONDIRENTRY)) then
+                  raise exception.create(rsIconUpdateError+' 3');
+
+
               end
               else
-                raise exception.create(rsIconUpdateError+' 5 '+rsInvalidIconType);
-            finally
-              icon.free;
-
-            end;
-
+                raise exception.create(rsIconUpdateError+' 4 '+rsInvalidIcon);
+            end
+            else
+              raise exception.create(rsIconUpdateError+' 5 '+rsInvalidIconType);
           finally
-            if EndUpdateResource(updatehandle, false)=false then
-              raise exception.create(format(rsUpdateFailed,[getLastError]));
+            icon.free;
+
           end;
-        end else raise exception.create(
-          rsFailureOpeningTheTrainerForResourceUpdates);
 
-        showmessage(rsTheTrainerHasBeenSuccessfullyGenerated);
-      end
-      else
-        showMessage(Format(rsTrainerFileMissing, [cheatenginedir+basefile, filename]));
+        finally
+          if EndUpdateResource(updatehandle, false)=false then
+            raise exception.create(format(rsUpdateFailed,[getLastError]));
+        end;
+      end else raise exception.create(
+        rsFailureOpeningTheTrainerForResourceUpdates);
 
-
-    finally
-      if _archive<>nil then
-        freeandnil(_archive);
-
-      saving:=false;
-      btnGenerateTrainer.enabled:=true;
+      showmessage(rsTheTrainerHasBeenSuccessfullyGenerated);
+    end
+    else
+      showMessage(Format(rsTrainerFileMissing, [cheatenginedir+basefile, filename]));
 
 
-      if addedfiles<>nil then
-        freeandnil(addedfiles);
-    end;
+  finally
+    if _archive<>nil then
+      freeandnil(_archive);
 
-  except
-    on e: exception do
-      MessageDlg(e.message, mtError,[mbok],0);
+    saving:=false;
+    btnGenerateTrainer.enabled:=true;
+
+
+    if addedfiles<>nil then
+      freeandnil(addedfiles);
   end;
   {$else}
   raise exception.create('not implemented yet');
@@ -647,11 +586,6 @@ procedure TfrmExeTrainerGenerator.Button3Click(Sender: TObject);
 begin
   if SelectDirectoryDialog1.Execute then
     addDirToList(SelectDirectoryDialog1.FileName);
-end;
-
-procedure TfrmExeTrainerGenerator.cbCCodeChange(Sender: TObject);
-begin
-  cbIncludes.checked:=cbCCode.checked;
 end;
 
 procedure TfrmExeTrainerGenerator.cbTrainersizeChange(Sender: TObject);
@@ -730,7 +664,7 @@ begin
 end;
 
 procedure TfrmExeTrainerGenerator.FormCreate(Sender: TObject);
-var s,s2: string;
+var s: string;
   i: integer;
 begin
   comboCompression.Items.Clear;
@@ -756,33 +690,6 @@ begin
   cbD3DHook.checked:=pos('created3dhook',s)>0;
   cbDotNet.checked:=symhandler.hasDotNetAccess or (pos('dotnet',s)>0);
 
-  for i:=0 to mainform.addresslist.Count-1 do
-  begin
-
-    if mainform.addresslist[i].VarType=vtAutoAssembler then
-    begin
-      if mainform.addresslist[i].AutoAssemblerData.script<>nil then
-      begin
-        s:=mainform.addresslist[i].AutoAssemblerData.script.text;
-        s2:=uppercase(s);
-
-        if (cbCCode.Checked=false) then
-        begin
-          if (pos('{$C}', s2)>0) or (pos('{$CCODE',s2)>0) then
-            cbCCode.Checked:=true;
-        end;
-
-        if (cbCCode.checked) then
-        begin
-          if pos('#include', s)>0 then
-          begin
-            cbIncludes.checked:=true;
-            break;
-          end;
-        end;
-      end;
-    end;
-  end;
 
   if mainform.LuaForms.count=1 then  //if there is only one form use that icon as default
     image1.Picture.Icon:=TCEForm(mainform.LuaForms[0]).icon

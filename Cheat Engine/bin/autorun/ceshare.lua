@@ -30,7 +30,7 @@ else
 end
 ceshare.xmlParser = require("xmlSimple").newParser()
 
---
+
 package.path=package.path..';'..ceshare.path..[[?.lua]]
 
 function loadCEShare()
@@ -189,10 +189,8 @@ else
     end   
   
     local f=io.open(ceshare.path..[[server.txt]],'wb')
-    if f then
-      f:write(ceshare.base)
-      f:close()  
-    end
+    f:write(ceshare.base)
+    f:close()  
 
     ceshare.initialSetup.close()    
   end
@@ -205,9 +203,7 @@ else
 
   --create an empty file so this will never be shown ever again  
   local f=io.open(ceshare.path..[[server.txt]],'wb')
-  if f then
-    f:close()  
-  end
+  f:close()  
   
   ceshare.initialSetup.show()  
   ceshare.initialSetup.AutoSize=false

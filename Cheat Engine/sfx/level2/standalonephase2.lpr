@@ -15,8 +15,7 @@ uses
   {$endif}
 {$endif}
 
-
-{$R *.res}
+{$R ..\..\manifest.res}
 
 begin
   Launch;

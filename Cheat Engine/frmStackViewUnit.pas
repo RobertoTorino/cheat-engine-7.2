@@ -13,7 +13,7 @@ uses
   {$endif}
   cefuncproc, newkernelhandler, Classes, SysUtils, FileUtil, LResources,
   Forms, Controls, Graphics, Dialogs, StdCtrls, Menus, stacktrace2, Clipbrd, ComCtrls,
-  strutils, frmSelectionlistunit, maps, betterControls, contexthandler;
+  strutils, frmSelectionlistunit, maps;
 
 type
 
@@ -60,8 +60,7 @@ type
     procedure PopupMenu1Popup(Sender: TObject);
   private
     { private declarations }
-    c: pointer;
-    contexthandler: TContextInfo;
+    c: PContext;
     stack: pbyte;
     size: integer;
 
@@ -71,7 +70,7 @@ type
     StackReference: ptruint;
   public
     { public declarations }
-    procedure SetContextPointer(c: pointer; stack: pbyte; size: integer);
+    procedure SetContextPointer(c: PContext; stack: pbyte; size: integer);
   end; 
 
 var
@@ -125,11 +124,16 @@ end;
 procedure TfrmStackView.PopupMenu1Popup(Sender: TObject);
 var
   x: ptruint;
-  ch: TContextInfo;
 begin
-  ch:=getBestContextHandler;
-  miAddESP.Caption:='('+ch.StackPointerRegister^.name+')';
-  miAddEBP.Caption:='('+ch.FramePointerRegister^.name+')';
+  if processhandler.is64Bit then
+  begin
+    miAddESP.Caption:='(rsp+*)';
+    miAddEBP.Caption:='(rbp+*)';
+  end else
+  begin
+    miAddESP.Caption:='(esp+*)';
+    miAddEBP.Caption:='(ebp+*)';
+  end;
 
   if lvStack.selected<>nil then
   begin
@@ -137,8 +141,7 @@ begin
     miAddRef.caption:=format('(ref+*) Ref will be %x',[x]);
   end;
 
-
-  miAddEBP.Enabled:=ch.FramePointerRegister^.getValue(c)<>0;
+  miAddEBP.Enabled:=(c.{$ifdef cpu64}rbp{$else}ebp{$endif}<>0);
   if not miAddEBP.Enabled and miAddEBP.Checked then miAddESP.Checked:=true;
 end;
 
@@ -205,7 +208,8 @@ begin
       structurefrm:=TfrmStructures2(frmStructures2[f.itemindex]);
 
     //add this esp (c.rsp/esp) as locked address
-    structurefrm.addLockedAddress(contexthandler.StackPointerRegister^.getValue(c), stack,size);
+
+    structurefrm.addLockedAddress({$ifdef cpu64}c.rsp{$else}c.esp{$endif}, stack,size);
 
     structurefrm.show;
 
@@ -275,8 +279,6 @@ var
 
   f: TfrmStacktrace;
 begin
-  if contexthandler=nil then
-    contexthandler:=getBestContextHandler;
 
   alloc:=VirtualAllocEx(processhandle, nil, size+1, MEM_COMMIT or MEM_RESERVE, PAGE_READWRITE);
   if alloc<>nil then
@@ -290,7 +292,7 @@ begin
     allocs.Add(alloc);
 
     f:=TfrmStacktrace.create(application);
-    f.shadowstacktrace(c, alloc, size);
+    f.shadowstacktrace(c^, alloc, size);
     f.show;
   end;
 
@@ -302,9 +304,7 @@ begin
 end;
 
 procedure TfrmStackView.FormShow(Sender: TObject);
-var
-  x: array of integer;
-  w: integer;
+var x: array of integer;
 begin
   setlength(x,3);
   if LoadFormPosition(self, x) then
@@ -322,18 +322,13 @@ begin
     lvStack.Column[0].Width:=lvStack.Canvas.TextWidth('DDDDDDDD');
     lvStack.Column[1].Width:=lvStack.Canvas.TextWidth('DDDDDDDD');
     {$else}
-    lvStack.Column[0].Width:=lvStack.Canvas.TextWidth('DDDDDDDDDDDDDD');
-    lvStack.Column[1].Width:=lvStack.Canvas.TextWidth('DDDDDDDDDDDDDD');
+    lvStack.Column[0].Width:=lvStack.Canvas.TextWidth('DDDDDDDDDDDDD');
+    lvStack.Column[1].Width:=lvStack.Canvas.TextWidth('DDDDDDDDDDDDD');
 
-    w:=lvStack.Column[0].Width+lvStack.Column[1].Width;
-    if (lvStack.ColumnCount>2) and (lvStack.Column[2].Visible) then
-    begin
-      lvStack.Column[2].Width:=lvStack.Canvas.TextWidth('DDDDDDDDDDDDDD');
-      w:=w+lvStack.Column[2].Width;
-    end;
-
-    clientwidth:=w;
+    if clientwidth<lvStack.Column[0].Width+lvStack.Column[1].Width+20 then
+      lvStack.Column[0].Width:=lvStack.Column[0].Width+lvStack.Column[1].Width+20;
     {$endif}
+
 
   end;
 end;
@@ -437,7 +432,7 @@ begin
   end;
 end;
 
-procedure TfrmStackView.SetContextPointer(c: pointer; stack: pbyte; size: integer);
+procedure TfrmStackView.SetContextPointer(c: PContext; stack: pbyte; size: integer);
 var tempstringlist: tstringlist;
   p1, p2: integer;
   i: integer;
@@ -452,7 +447,6 @@ var tempstringlist: tstringlist;
   refname: string;
   refaddress: ptruint;
 begin
-  contexthandler:=getBestContextHandler;
   self.c:=c;
   self.stack:=stack;
   self.size:=size;
@@ -463,14 +457,19 @@ begin
   try
     if miAddESP.checked then
     begin
-      refname:=contexthandler.StackPointerRegister^.name;
-      refaddress:=contexthandler.StackPointerRegister^.getValue(c);
+      refname:='rsp';
+      refaddress:=c.{$ifdef cpu64}rsp{$else}esp{$endif};
+      if not processhandler.is64Bit then
+        refname[1]:='e';
     end
     else
     if miAddEBP.checked then
     begin
-      refname:=contexthandler.FramePointerRegister^.name;
-      refaddress:=contexthandler.FramePointerRegister^.getValue(c);
+      refname:='rbp';
+      if not processhandler.is64Bit then
+        refname[1]:='e';
+
+      refaddress:=c.{$ifdef cpu64}rbp{$else}ebp{$endif};
     end
     else
     if miAddRef.checked then
@@ -479,7 +478,7 @@ begin
       refaddress:=StackReference;
     end;
 
-    ce_stacktrace(contexthandler.StackPointerRegister^.getValue(c), contexthandler.FramePointerRegister^.getValue(c), contexthandler.InstructionPointerRegister^.getValue(c), pbytearray(stack), size, tempstringlist, true,false,false,0,refaddress, refname);
+    ce_stacktrace(c.{$ifdef cpu64}rsp{$else}esp{$endif}, c.{$ifdef cpu64}rbp{$else}ebp{$endif}, c.{$ifdef cpu64}rip{$else}eip{$endif}, pbytearray(stack), size, tempstringlist, true,false,false,0,refaddress, refname);
     //now fill the listview with this information
 
     lvStack.Items.Clear;

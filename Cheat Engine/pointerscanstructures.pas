@@ -55,7 +55,7 @@ type
 
   PPointerscanControllerParent=^TPointerscanControllerParent;
 
-  TPointerscancontrollerchild=record   //todo: maybe turn this into a class with methods to call child commands ?
+  TPointerscancontrollerchild=record
     socket: TSocketstream;
     MissingSince: qword; //holds the time when the connection was lost. If this is set to 0 the child info will be deleted
     Error: string;

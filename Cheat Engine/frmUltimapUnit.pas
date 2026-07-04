@@ -14,8 +14,7 @@ uses
   Classes, SysUtils, FileUtil, Forms, Controls, Graphics, Dialogs, StdCtrls,
   DBK32functions, NewKernelHandler, cefuncproc, AvgLvlTree, ExtCtrls, ComCtrls,
   math,  symbolhandler, maps, Menus, disassembler, multicpuexecution, syncobjs,
-  genericHotkey, HotKeys, frmHotkeyExUnit, frmSelectionlistunit, commonTypeDefs,
-  betterControls, Clipbrd;
+  genericHotkey, HotKeys, frmHotkeyExUnit, frmSelectionlistunit, commonTypeDefs;
 
 
 
@@ -87,7 +86,6 @@ type
     edtFilename: TEdit;
     edtWorkerCount: TEdit;
     Flusher: TTimer;
-    miCopyToClipboard: TMenuItem;
     umImageList: TImageList;
     Label1: TLabel;
     Label2: TLabel;
@@ -135,7 +133,6 @@ type
     procedure ListView1Data(Sender: TObject; Item: TListItem);
     procedure ListView1DblClick(Sender: TObject);
     procedure MenuItem1Click(Sender: TObject);
-    procedure miCopyToClipboardClick(Sender: TObject);
     procedure miSetHotkeyClick(Sender: TObject);
     procedure MenuItem2Click(Sender: TObject);
     procedure miRemoveHotkeyClick(Sender: TObject);
@@ -193,14 +190,14 @@ implementation
 
 {$R *.lfm}
 
-uses MemoryBrowserFormUnit, vmxfunctions, ProcessHandlerUnit, AdvancedOptionsUnit, mainunit2;
+uses MemoryBrowserFormUnit, vmxfunctions, ProcessHandlerUnit, AdvancedOptionsUnit;
 
 resourcestring
   rsUUOld = 'old=';
   rsUUNew = ' new=';
   rsUUErrorDuringMap = 'Error during map';
   rsUUSorryButThisFeatureIsOnlyAvailableOnIntelCpus = 'Sorry, but this feature is only available on intel cpu''s';
-  rsUUPleaseRunThe64bitVersionOfCheatEngineToMakeUseOfThisFeature = 'Please run the 64-bit version of '+strCheatEngine+' to make use of this feature';
+  rsUUPleaseRunThe64bitVersionOfCheatEngineToMakeUseOfThisFeature = 'Please run the 64-bit version of Cheat Engine to make use of this feature';
   rsUUThisFunctionNeedsAtLeast200BytesForTheHeaderOfTheBuffer = 'This function needs at least 200 bytes for the header of the buffer';
   rsUUTheMaximumNumberOfWorkersIs64 = 'The maximum number of workers is 64';
   rsUUPause = 'Pause';
@@ -462,7 +459,7 @@ begin
 
 
 
-  if ultimap(target_cr3, (1 shl 6) or (1 shl 7) or (1 shl 9) or (1 shl 8), bufsize, cbLogToFile.checked, pwidechar(filename), workercount) then
+  if ultimap(target_cr3, (1 shl 6) or (1 shl 7) or (1 shl 9) or (1 shl 8), bufsize, false, pwidechar(filename), workercount) then
   begin
     hashandled:=CreateEvent(nil, true, false, nil);
     setlength(workers, workercount);
@@ -743,7 +740,7 @@ begin
     isretdisassembler.disassemble(a, x);
     isret:=iscalldisassembler.LastDisassembleData.isret;
 
-    rettable.Add(address, isret);
+    callTable.Add(address, isret);
   end;
 
   result:=isret;
@@ -1017,32 +1014,6 @@ begin
       advancedoptions.AddToCodeList(a, a2-a,false,true);
     end;
   end;
-end;
-
-procedure TfrmUltimap.miCopyToClipboardClick(Sender: TObject);
-var
-  i: integer;
-  a,a2: ptruint;
-  size: integer;
-
-  r: tstringlist;
-  s: string;
-begin
-  r:=tstringlist.create;
-
-  for i:=0 to listview1.Items.count-1 do
-  begin
-    if listview1.Items[i].Selected then
-    begin
-      s:=listview1.Items[i].Caption;
-      s:=s+ '-'+ listview1.Items[i].SubItems[0];
-      s:=s+ '-'+ listview1.Items[i].SubItems[1];
-      r.add(s);
-    end;
-  end;
-
-  Clipboard.AsText:=r.Text;
-  r.free;
 end;
 
 procedure TfrmUltimap.miSetHotkeyClick(Sender: TObject);

@@ -36,21 +36,13 @@ var IsWow64Process        :TIsWow64Process;
     i: integer;
 
     cpuid7ebx: dword;
-    basename: widestring;
     exename: widestring;
-
-    s: string;
 begin
   {$ifdef cpu64}
   MessageBox(0,'A fucking retard thought that removing an earlier $ERROR line would be enough to run this','',0);
   exit;
   {$endif}
 
-  {$ifndef altname}
-  basename:='cheatengine';
-  {$else}
-  basename:='rt-mod';
-  {$endif}
 
   WindowsKernel:=LoadLibrary('Kernel32.dll'); //there is no kernel33.dll
   IsWow64Process:=   GetProcAddress(WindowsKernel, 'IsWow64Process');
@@ -78,7 +70,7 @@ begin
   //MessageBox(0, pchar(param),'bla',0);
 
   if launch32bit then
-    exename:=basename+'-i386.exe'
+    exename:='cheatengine-i386.exe'
   else
   begin
     asm
@@ -91,19 +83,16 @@ begin
     end;
 
     if (cpuid7ebx and (1 shl 5))>0 then
-      exename:=basename+'-x86_64-SSE4-AVX2.exe'
+      exename:='cheatengine-x86_64-SSE4-AVX2.exe'
     else
-      exename:=basename+'-x86_64.exe';
+      exename:='cheatengine-x86_64.exe';
   end;
 
   
   if FileExists(selfpath+exename) then
     ShellExecuteW(0, 'open', pwidechar(selfpath+exename), pwidechar(widestring(param)), pwidechar(selfpath), sw_show)
   else
-  begin
-    s:=exename;
-    MessageBoxW(0, pwidechar(exename+' could not be found. Please disable/uninstall your anti virus and reinstall Cheat Engine to fix this'),'Cheat Engine launch error',MB_OK or MB_ICONERROR);
-  end;
+    MessageBox(0, pchar(exename+' could not be found. Please disable/uninstall your anti virus and reinstall Cheat Engine to fix this'),'Cheat Engine launch error',MB_OK or MB_ICONERROR);
 
 
 end.

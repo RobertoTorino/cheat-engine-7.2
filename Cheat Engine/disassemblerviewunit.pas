@@ -24,13 +24,13 @@ uses {$ifdef darwin}macport,messages,lcltype,{$endif}
      {$ifdef windows}jwawindows, windows,commctrl,{$endif}
      sysutils, LCLIntf, forms, classes, controls, comctrls, stdctrls, extctrls, symbolhandler,
      cefuncproc, NewKernelHandler, graphics, disassemblerviewlinesunit, disassembler,
-     math, lmessages, menus, DissectCodeThread, tcclib
+     math, lmessages, menus, DissectCodeThread
 
      {$ifdef USELAZFREETYPE}
      ,cefreetype,FPCanvas, EasyLazFreeType, LazFreeTypeFontCollection, LazFreeTypeIntfDrawer,
      LazFreeTypeFPImageDrawer, IntfGraphics, fpimage, graphtype
      {$endif}
-     , betterControls, Contnrs;
+     ;
 
 
 
@@ -71,8 +71,6 @@ type TDisassemblerview=class(TPanel)
     fShowJumplines: boolean; //defines if it should draw jumplines or not
     fShowjumplineState: TShowjumplineState;
 
-    fCenterOnAddressChangeOutsideView: boolean;
-
 
    // fdissectCode: TDissectCodeThread;
 
@@ -92,13 +90,6 @@ type TDisassemblerview=class(TPanel)
     scrolltimer: ttimer;
 
     fOnDisassemblerViewOverride: TDisassemblerViewOverrideCallback;
-
-
-    fCR3: qword;
-    fCurrentDisassembler: TDisassembler;
-
-    fUseRelativeBase: boolean;
-    fRelativeBase: ptruint;
 
 
 
@@ -135,14 +126,8 @@ type TDisassemblerview=class(TPanel)
     procedure synchronizeDisassembler;
     procedure StatusInfoLabelCopy(sender: TObject);
 
-    procedure setCR3(pa: QWORD);
-
-    function getSelectionSize: integer;
-    procedure setSelectionSize(s: integer);
 
   protected
-    backlist: TStack;
-    goingback: boolean;
     procedure HandleSpecialKey(key: word);
     procedure WndProc(var msg: TMessage); override;
     procedure DoEnter; override;
@@ -158,7 +143,6 @@ type TDisassemblerview=class(TPanel)
     jlCallColor: TColor;
     jlConditionalJumpColor: TColor;
     jlUnConditionalJumpColor: TColor;
-    statusErrorColor: TColor;
 
     LastFormActiveEvent: qword;
 
@@ -168,11 +152,6 @@ type TDisassemblerview=class(TPanel)
     IntfImage: TLazIntfImage;
     drawer: TIntfFreeTypeDrawer;
     {$endif}
-
-
-
-    procedure GoBack;
-    function hasBackList: boolean;
 
     procedure DoDisassemblerViewLineOverride(address: ptruint; var addressstring: string; var bytestring: string; var opcodestring: string; var parameterstring: string; var specialstring: string);
 
@@ -192,7 +171,6 @@ type TDisassemblerview=class(TPanel)
 
     function getDisassemblerLineAtPoint(p: tpoint): TDisassemblerLine;
     function getReferencedByLineAtPos(p: tpoint): ptruint;
-    function getSourceCodeAtPos(p: tpoint): PLineNumberInfo;
     function ClientToCanvas(p: tpoint): TPoint;
 
     constructor create(AOwner: TComponent); override;
@@ -213,22 +191,14 @@ type TDisassemblerview=class(TPanel)
     property Osb: TBitmap read offscreenbitmap;
     property OnExtraLineRender: TDisassemblerExtraLineRender read fOnExtraLineRender write fOnExtraLineRender;
     property OnDisassemblerViewOverride: TDisassemblerViewOverrideCallback read fOnDisassemblerViewOverride write fOnDisassemblerViewOverride;
-    property CR3: qword read fCR3 write setCR3;
-    property CurrentDisassembler: TDisassembler read fCurrentDisassembler;
-    property SelectionSize: integer read getSelectionSize write setSelectionSize;
-
-    property RelativeBase: ptruint read fRelativeBase write fRelativeBase;
-    property UseRelativeBase: boolean read fUseRelativeBase write fUseRelativeBase;
-    property CenterOnAddressChangeOutsideView: boolean read fCenterOnAddressChangeOutsideView write fCenterOnAddressChangeOutsideView; //if false, top
 end;
 
 
 implementation
 
-uses ProcessHandlerUnit, Parsers, Clipbrd, Globals;
+uses processhandlerunit, parsers, Clipbrd, Globals;
 
 resourcestring
-  rsDebugSymbolsAreBeingLoaded = 'Debug symbols are being loaded (%d %% (%s))';
   rsSymbolsAreBeingLoaded = 'Symbols are being loaded (%d %%)';
   rsStructuresAreBeingParsed = 'Structures are being parsed';
   rsExtendedDebugInfoIsLoaded = 'Extended debug info is being loaded (%d %%)';
@@ -339,17 +309,9 @@ end;
 procedure TDisassemblerview.setSelectedAddress(address: ptrUint);
 var i: integer;
     found: boolean;
-
-    viewchanged: boolean;
-    count: integer;
 begin
-  if (fSelectedAddress<>0) and (fselectedAddress<>address) and (not goingback) then
-    backlist.Push(pointer(fselectedAddress));
-
   fSelectedAddress:=address;
   fSelectedAddress2:=address;
-
-  viewchanged:=false;
 
   if (fTotalvisibledisassemblerlines>1) and (InRangeX(fSelectedAddress, Tdisassemblerline(disassemblerlines[0]).address, Tdisassemblerline(disassemblerlines[fTotalvisibledisassemblerlines-2]).address)) then
   begin
@@ -367,87 +329,17 @@ begin
     begin
       fTopAddress:=address;
       fTopSubline:=0;
-      viewchanged:=true;
     end;
 
   end else
   begin
     fTopAddress:=address;
     fTopSubline:=0;
-    viewchanged:=true;
   end;
 
-  if fCenterOnAddressChangeOutsideView and viewchanged then
-  begin
-    BeginUpdate;
-    count:=0;
-    repeat
-      fTopAddress:=fTopAddress-1;
-      update;
-      inc(count);
-    until (Tdisassemblerline(disassemblerlines[fTotalvisibledisassemblerlines div 2]).Address=address) or (Tdisassemblerline(disassemblerlines[fTotalvisibledisassemblerlines-1]).Address<address) or (count>1000);
-
-    if (Tdisassemblerline(disassemblerlines[fTotalvisibledisassemblerlines-1]).Address<address) or (count>1000) then //failed to center
-      fTopAddress:=address;
-
-    EndUpdate;
-  end;
 
 
   update;
-end;
-
-function TDisassemblerview.getSelectionSize: integer;
-var
-  lastaddr: ptruint;
-  d: TDisassembler;
-begin
-  d:=TDisassembler.create;
-  lastaddr:=max(fSelectedAddress2, fSelectedAddress);
-  d.disassemble(lastaddr);
-  d.free;
-
-  result:=lastaddr-min(fSelectedAddress2, fSelectedAddress);
-end;
-
-procedure TDisassemblerview.setSelectionSize(s: integer);
-var
-  first: ptruint;
-  last: ptruint;
-  current: ptruint;
-  stop: ptruint;
-  d: TDisassembler;
-begin
-  first:=min(fSelectedAddress2, fSelectedAddress);
-  fselectedaddress:=first;
-
-  current:=first;
-  stop:=first+s;
-
-  d:=TDisassembler.create;
-  while current<stop do
-  begin
-    fselectedaddress2:=current;
-    d.disassemble(current);
-  end;
-  d.free;
-
-  update;
-end;
-
-procedure TDisassemblerview.GoBack;
-begin
-  if hasBackList then
-  begin
-    goingback:=true;
-    setSelectedAddress(ptruint(backlist.Pop));
-    goingback:=false;
-  end;
-end;
-
-function TDisassemblerview.hasBackList: boolean;
-begin
-  result:=backlist.count>0;
 end;
 
 procedure TDisassemblerview.MouseScroll(Sender: TObject; Shift: TShiftState; WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
@@ -771,16 +663,6 @@ begin
   visibleDisassembler.showmodules:=symhandler.showModules;
   visibleDisassembler.showsymbols:=symhandler.showsymbols;
   visibleDisassembler.showsections:=symhandler.showsections;
-
-  fCurrentDisassembler.showmodules:=symhandler.showModules;
-  fCurrentDisassembler.showsymbols:=symhandler.showsymbols;
-  fCurrentDisassembler.showsections:=symhandler.showsections;
-  fCurrentDisassembler.is64bitOverride:=visibleDisassembler.is64bitOverride;
-
-  if visibleDisassembler.architecture<>fCurrentDisassembler.architecture then
-    OutputDebugString('Architecture changed');
-
-  fCurrentDisassembler.architecture:=visibleDisassembler.architecture;
 end;
 
 procedure TDisassemblerview.StatusInfoLabelCopy(sender: TObject);
@@ -805,18 +687,6 @@ begin
   d:=getDisassemblerLineAtPoint(p);
   if d<>nil then
     result:=d.getReferencedByAddress(cp.y-d.top);
-end;
-
-function TDisassemblerview.getSourceCodeAtPos(p: tpoint): PLineNumberInfo;
-var cp: tpoint;
-  d: TDisassemblerLine;
-  y: integer;
-begin
-  result:=nil;
-  cp:=ClientToCanvas(p);
-  d:=getDisassemblerLineAtPoint(p);
-  if d<>nil then
-    result:=d.getSourceCode(cp.y-d.top);
 end;
 
 function TDisassemblerview.getDisassemblerLineAtPoint(p: tpoint): TDisassemblerLine;
@@ -868,20 +738,13 @@ begin
 
   //if gettickcount-lastupdate>50 then
   begin
-    if (symhandler.parsingdebuginfo or symhandler.loadingExtendedData or symhandler.parsingStructures or (not symhandler.isloaded)) and (not symhandler.haserror) then
+    if (symhandler.loadingExtendedData or symhandler.parsingStructures or (not symhandler.isloaded)) and (not symhandler.haserror) then
     begin
       if processid>0 then
       begin
        // symhandler.currentState:=
-        if symhandler.parsingdebuginfo then
-        begin
-          statusinfolabel.Caption:=format(rsDebugSymbolsAreBeingLoaded,[symhandler.progress, symhandler.currentModule])
-        end
-        else
         if symhandler.loadingExtendedData then
-        begin
           statusinfolabel.Caption:=format(rsExtendedDebugInfoIsLoaded,[symhandler.extendedDataProgess])
-        end
         else
         if symhandler.parsingStructures then
           statusinfolabel.Caption:=rsStructuresAreBeingParsed
@@ -895,7 +758,7 @@ begin
     else
     begin
       if symhandler.haserror then
-        statusinfolabel.Font.Color:=statusErrorColor
+        statusinfolabel.Font.Color:=clRed
       else
         statusinfolabel.Font.Color:=clWindowText;
 
@@ -1271,43 +1134,9 @@ begin
 end;
 
 
-procedure TDisassemblerview.setCR3(pa: QWORD);
-begin
-  {$ifdef windows}
-  if pa=fcr3 then exit;
-
-  if fCurrentDisassembler<>visibleDisassembler then
-    freeAndNil(fCurrentDisassembler);
-
-  if pa<>0 then
-  begin
-    fCurrentDisassembler:=TCR3Disassembler.Create;
-    TCR3Disassembler(fCurrentDisassembler).CR3:=pa;
-    fCurrentDisassembler.syntaxhighlighting:=true;
-  end
-  else
-  begin
-    if MainThreadID=GetCurrentThreadId then
-      fCurrentDisassembler:=visibleDisassembler
-    else
-    begin
-      fCurrentDisassembler:=TDisassembler.Create;
-      fCurrentDisassembler.syntaxhighlighting:=true;
-    end;
-  end;
-
-  fCR3:=pa;
-  {$endif}
-
-  update;
-end;
-
 destructor TDisassemblerview.destroy;
 begin
   destroyed:=true;
-
-  if backlist<>nil then
-    freeandnil(backlist);
 
   reinitialize;
   if disassemblerlines<>nil then
@@ -1335,8 +1164,6 @@ begin
   if statusinfo<>nil then
     freeandnil(statusinfo);
 
-  if (fCurrentDisassembler<>nil) and (fCurrentDisassembler<>visibleDisassembler) then
-    freeAndNil(fCurrentDisassembler);
 
   inherited destroy;
 end;
@@ -1347,17 +1174,6 @@ var
   mi: TMenuItem;
 begin
   inherited create(AOwner);
-
-  backlist:=TStack.Create;
-
-  if MainThreadID=GetCurrentThreadId then
-    fCurrentDisassembler:=visibleDisassembler
-  else
-  begin
-    fCurrentDisassembler:=TDisassembler.Create;
-    fCurrentDisassembler.syntaxhighlighting:=true;
-  end;
-
 
   {$ifdef USELAZFREETYPE}
   if loadCEFreeTypeFonts then
@@ -1395,7 +1211,7 @@ begin
 //    height:=19;
     parent:=self;
     PopupMenu:=emptymenu;
-    color:=clBtnFace;
+   // color:=clYellow;
   end;
 
   statusinfolabel:=TLabel.Create(self);
@@ -1418,9 +1234,6 @@ begin
       mi.name:='miStatusInfoLabelCopy';
       items.Add(mi);
     end;
-
-    Font.Color:=clWindowText;
-
   end;
 
   disassembleDescription:=Tpanel.Create(self);
@@ -1430,7 +1243,7 @@ begin
     //autosize:=true;
     bevelInner:=bvLowered;
     bevelOuter:=bvLowered;
-    Color:=colorset.TextBackground;
+    Color:=clWhite;
 
     ParentFont:=false;
     Font.Charset:=DEFAULT_CHARSET;
@@ -1498,8 +1311,6 @@ begin
     //header.Align:=alTop;
     //header.ParentFont:=false;
     PopupMenu:=emptymenu;
-
-    font.color:=clWindowtext;
 
     name:='Header';
   end;
@@ -1586,23 +1397,13 @@ begin
 end;
 
 procedure TDisassemblerview.getDefaultColors(var c: Tdisassemblerviewcolors);
-var defaultHexColor: TColor;
 begin
   //setup the default colors:
-  if ShouldAppsUseDarkMode() then
-    defaultHexColor:=$ff7f00
-  else
-    defaultHexColor:=clBlue;
-
   c[csNormal].backgroundcolor:=clBtnFace;
   c[csNormal].normalcolor:=clWindowText;
   c[csNormal].registercolor:=clRed;
   c[csNormal].symbolcolor:=clGreen;
-  if ShouldAppsUseDarkMode() then
-    c[csNormal].hexcolor:=$ff7f00 //inccolor(clBlue,18)
-  else
-    c[csNormal].hexcolor:=clBlue;
-
+  c[csNormal].hexcolor:=clBlue;
 
   c[csHighlighted].backgroundcolor:=clHighlight;
   c[csHighlighted].normalcolor:=clHighlightText;
@@ -1656,8 +1457,6 @@ begin
   jlConditionalJumpColor:=clRed;
   jlUnconditionalJumpColor:=clGreen;
   jlCallColor:=clYellow;
-
-  statusErrorColor:=clred;
 end;
 
 

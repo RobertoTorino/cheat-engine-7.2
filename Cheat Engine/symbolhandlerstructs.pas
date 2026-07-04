@@ -34,23 +34,15 @@ type
   end;
 
 
-  TUserdefinedsymbol=record
-    symbolname: string;
-    address: ptrUint;
-    addressstring: string;
+type TUserdefinedsymbol=record
+  symbolname: string;
+  address: ptrUint;
+  addressstring: string;
 
-    allocsize: dword; //if it is a global alloc, allocsize>0
-    processid: dword; //the processid this memory was allocated to (in case of processswitches)
-    doNotSave: boolean; //if true this will cause this entry to not be saved when the user saves the table
-  end;
-
-  TUserdefinedSymbolsList=array of TUserdefinedsymbol;
-
-
-
-
-
-
+  allocsize: dword; //if it is a global alloc, allocsize>0
+  processid: dword; //the processid this memory was allocated to (in case of processswitches)
+  doNotSave: boolean; //if true this will cause this entry to not be saved when the user saves the table
+end;
 
 type TModuleInfo=record
   modulename: string;
@@ -62,8 +54,6 @@ type TModuleInfo=record
   symbolsLoaded: boolean; //true if the api symbols have been handled
   hasStructInfo: boolean;
   databaseModuleID: dword;
-  elfpart: integer; //for network module list.  if elfpart is not 0, it's not the base so no need for symbols
-  elffileoffset: dword;
   sections: array of record
     name: string;
     size: dword;
