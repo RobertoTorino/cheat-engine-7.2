@@ -21,7 +21,7 @@ uses
 const ceversion=7.2;
 
 resourcestring
-  cename = 'Cheat Engine 7.2';
+  cename = 'Cheat Engine 7.2 - TRR';
   rsPleaseWait = 'Please Wait!';
 
 procedure UpdateToolsMenu;

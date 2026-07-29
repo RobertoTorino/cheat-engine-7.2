@@ -1,0 +1,46 @@
+name: release-main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lazarus 2.0.10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-2.0.10-fpc-3.2.0-win64.exe'
+          Invoke-WebRequest -Uri 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.0.10/lazarus-2.0.10-fpc-3.2.0-win64.exe/download' -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\lazarus' -Wait
+
+      - name: Build portable release
+        shell: pwsh
+        run: |
+          ./Build-CE64-Portable.ps1 -LazbuildPath 'C:\lazarus\lazbuild.exe' -OutputDir 'artifacts' -WriteShortLog
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-main-${{ github.run_number }}
+          path: artifacts/*
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: trr-main-${{ github.run_number }}
+          name: TRR Release Build #${{ github.run_number }}
+          generate_release_notes: true
+          files: artifacts/*.zip

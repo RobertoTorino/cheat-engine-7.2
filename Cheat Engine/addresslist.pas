@@ -867,6 +867,7 @@ begin
   with TFormaddresschange.Create(self) do
   begin
     caption:=rsALAddAddress;
+    Width:=Width+20;
     memoryrecord:=mr;
     if showmodal<>mrok then
     begin

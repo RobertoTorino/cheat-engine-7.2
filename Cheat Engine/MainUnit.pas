@@ -443,6 +443,7 @@ type
     rt2: TRadioButton;
     rt3: TRadioButton;
     SettingsButton: TSpeedButton;
+    DarkModeButton: TSpeedButton;
     tbSpeed: TTrackBar;
     UpdateTimer: TTimer;
     FreezeTimer: TTimer;
@@ -530,6 +531,9 @@ type
     Save1: TMenuItem;
     Load1: TMenuItem;
     Settings1: TMenuItem;
+    miToggleDarkMode: TMenuItem;
+    miAdvancedOptionsTop: TMenuItem;
+    miTableExtrasTop: TMenuItem;
     N6: TMenuItem;
     a1: TMenuItem;
     b1: TMenuItem;
@@ -704,6 +708,7 @@ type
       var Accept: boolean);
     procedure Splitter1Moved(Sender: TObject);
     procedure SettingsClick(Sender: TObject);
+    procedure DarkModeButtonClick(Sender: TObject);
     procedure cbCaseSensitiveClick(Sender: TObject);
     procedure LogoMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: integer);
@@ -746,6 +751,11 @@ type
     procedure File1Click(Sender: TObject);
     procedure actOpenProcesslistExecute(Sender: TObject);
     procedure Type1Click(Sender: TObject);
+  private
+    FDarkModeEnabled: boolean;
+    procedure ApplyThemeToControl(control: TControl; darkMode: boolean);
+    procedure ApplyMainTheme(darkMode: boolean);
+    procedure ToggleDarkMode;
   private
     repeatscantimer: TTimer;
     onetimeonly: boolean; //to protect against make mainform visible (.show)
@@ -2340,7 +2350,7 @@ begin
 
 
   scanvalue.Visible := True;
-  scantext.Visible := True;
+  scantext.Visible := False;
 
   Updatescantype;
   Scantype.ItemIndex := 0;
@@ -2481,6 +2491,10 @@ var
 begin
   scantext2.Caption := scantext.Caption;
 
+  // In between-scan mode, anchor first value edit to the 'and' label.
+  scanvalue.AnchorSideRight.Control:=andlabel;
+  scanvalue.AnchorSideRight.Side:=asrTop;
+
   andlabel.Visible:=true;
   scanvalue2.visible:=true;
   scantext2.visible:=true;
@@ -2490,6 +2504,10 @@ end;
 
 procedure TMainForm.DestroyScanValue2;
 begin
+  // In single-value mode, keep the same right edge as ScanType/VarType.
+  scanvalue.AnchorSideRight.Control:=Panel9;
+  scanvalue.AnchorSideRight.Side:=asrTop;
+
   scanvalue2.visible:=false;
   scantext2.visible:=false;
   andlabel.visible:=false;
@@ -2642,6 +2660,8 @@ begin
 
       cbNot.Visible:=not (vartype.itemindex in [0,7,8,10]);
     end;
+
+    ScanText.Visible := False;
 
     pnlfloat.Visible := floatvis;
 
@@ -2952,7 +2972,7 @@ begin
 
     scanvalue.Visible := False;
     scantext.Visible := False;
-    scanvalue.Text := '';
+    scanvalue.Text := 'Value';
     cbHexadecimal.Enabled := False;
     cbCaseSensitive.Enabled := False;
     cbNot.Visible:=false;
@@ -5141,7 +5161,7 @@ var
 begin
   if scantablist = nil then
   begin
-    foundlistheightdiff := btnMemoryView.top - (foundlist3.top + foundlist3.Height);
+    foundlistheightdiff := (gbScanOptions.top + gbScanOptions.Height) - (foundlist3.top + foundlist3.Height);
 
     scantablist := TTablist.Create(self);
     scantablist.Name:='ScantabList';
@@ -5199,7 +5219,7 @@ begin
 
 
 
-    foundlist3.Height := btnMemoryView.top - foundlist3.top - foundlistheightdiff;
+    foundlist3.Height := (gbScanOptions.top + gbScanOptions.Height) - foundlist3.top - foundlistheightdiff;
 
     scantype.Top:=scantype.top+scantablist.Height+4;
   end
@@ -5348,13 +5368,8 @@ end;
 
 procedure TMainForm.Panel5Resize(Sender: TObject);
 var
-  widthleft,w,aw: integer;
+  widthleft,w,targetWidth,targetRight,gap: integer;
 begin
- // scanvalue2.width:=(((panel5.width-5)-scanvalue.left+((andlabel.width+10) div 2)) div 2);
-  w:=(panel5.clientwidth-scanvalue.left)-5 ;
-  aw:=andlabel.width+8;
-  scanvalue2.width:=(w div 2) - (aw div 2);
-
   {cbSpeedhack.left := panel5.clientwidth - cbspeedhack.Width;
   cbUnrandomizer.left := cbspeedhack.left;
   gbScanOptions.Left := cbUnrandomizer.left - gbScanOptions.Width - 3;
@@ -5380,7 +5395,31 @@ begin
 
   }
 
-  //resize the foundlist columns. Do NOT do this in the onresize of the foundlist
+  // Keep the top-left icon row with equal visual spacing.
+  gap:=3;
+  LoadButton.Left:=Panel7.Left+sbOpenProcess.Left+sbOpenProcess.Width+gap;
+  SaveButton.Left:=LoadButton.Left+LoadButton.Width+gap;
+
+  // Keep the top scan buttons evenly spaced.
+  btnNextScan.Left:=btnNewScan.Left+btnNewScan.Width+10;
+  UndoScan.Left:=btnNextScan.Left+btnNextScan.Width+10;
+
+  // Keep Found row and Memory View aligned with each other.
+  Label6.Left:=Foundlist3.Left;
+  btnMemoryView.Left:=Foundlist3.Left;
+
+  // Keep right-side scan controls fixed and let only scan-results pane grow/shrink.
+  // Use the left-most control on the right side as the hard boundary to avoid overlap.
+  targetRight:=gbScanOptions.Left;
+  if btnNewScan.Left<targetRight then
+    targetRight:=btnNewScan.Left;
+
+  targetWidth:=targetRight-foundlist3.Left-10;
+  if targetWidth<1 then
+    targetWidth:=1;
+  foundlist3.Width:=targetWidth;
+
+  // resize the foundlist columns. Do NOT do this in the onresize of the foundlist
   widthleft:=foundlist3.clientwidth-foundlist3.Columns[0].Width;
 
   if miShowPreviousValue.checked then
@@ -5511,7 +5550,7 @@ begin
   vartype.Enabled := True;
 
   scanvalue.Visible := True;
-  scantext.Visible := True;
+  scantext.Visible := False;
 
   Updatescantype;
   Scantype.ItemIndex := 0;
@@ -5597,6 +5636,188 @@ begin
 
   end;
 
+end;
+
+procedure TMainForm.ApplyThemeToControl(control: TControl; darkMode: boolean);
+const
+  DARK_BG = $333333;
+  DARK_PANEL = $333333;
+  DARK_INPUT = $FAFAFA;
+  DARK_TEXT = $EAEAEA;
+  DARK_INPUT_TEXT = clBlack;
+  LIGHT_BG = clBtnFace;
+  LIGHT_INPUT = clWindow;
+  LIGHT_TEXT = clWindowText;
+  LIGHT_INPUT_TEXT = clWindowText;
+var
+  i: integer;
+  bgColor, panelColor, inputColor, textColor, inputTextColor: TColor;
+  fontStyle: TFontStyles;
+begin
+  if control=nil then exit;
+
+  if darkMode then
+  begin
+    bgColor:=DARK_BG;
+    panelColor:=DARK_PANEL;
+    inputColor:=DARK_INPUT;
+    textColor:=DARK_TEXT;
+    inputTextColor:=DARK_INPUT_TEXT;
+    fontStyle:=[fsBold];
+  end
+  else
+  begin
+    bgColor:=LIGHT_BG;
+    panelColor:=LIGHT_BG;
+    inputColor:=LIGHT_INPUT;
+    textColor:=LIGHT_TEXT;
+    inputTextColor:=LIGHT_INPUT_TEXT;
+    fontStyle:=[];
+  end;
+
+  if control is TLabel then
+  begin
+    TLabel(control).Font.Style:=fontStyle;
+    TLabel(control).Font.Color:=textColor;
+  end;
+
+  if control is TButton then
+  begin
+    TButton(control).Font.Style:=fontStyle;
+    TButton(control).Font.Color:=textColor;
+    TButton(control).Color:=panelColor;
+  end;
+
+  if control is TSpeedButton then
+  begin
+    TSpeedButton(control).Font.Style:=fontStyle;
+    TSpeedButton(control).Font.Color:=textColor;
+  end;
+
+  if control is TCheckBox then
+  begin
+    TCheckBox(control).ParentColor:=false;
+    TCheckBox(control).Font.Style:=fontStyle;
+    TCheckBox(control).Font.Color:=textColor;
+  end;
+
+  if control is TRadioButton then
+  begin
+    TRadioButton(control).ParentColor:=false;
+    TRadioButton(control).Font.Style:=fontStyle;
+    TRadioButton(control).Font.Color:=textColor;
+  end;
+
+  if control is TGroupBox then
+  begin
+    TGroupBox(control).ParentColor:=false;
+    TGroupBox(control).Color:=panelColor;
+    TGroupBox(control).Font.Style:=fontStyle;
+    TGroupBox(control).Font.Color:=textColor;
+  end;
+
+  if control is TPanel then
+  begin
+    TPanel(control).ParentColor:=false;
+    TPanel(control).Color:=panelColor;
+    TPanel(control).Font.Style:=fontStyle;
+    TPanel(control).Font.Color:=textColor;
+  end;
+
+  if control is TEdit then
+  begin
+    TEdit(control).ParentColor:=false;
+    TEdit(control).Color:=inputColor;
+    TEdit(control).Font.Style:=fontStyle;
+    TEdit(control).Font.Color:=inputTextColor;
+  end;
+
+  if control is TComboBox then
+  begin
+    TComboBox(control).ParentColor:=false;
+    TComboBox(control).Color:=inputColor;
+    TComboBox(control).Font.Style:=fontStyle;
+    TComboBox(control).Font.Color:=inputTextColor;
+  end;
+
+  if control is TListView then
+  begin
+    TListView(control).ParentColor:=false;
+    if darkMode then
+      TListView(control).Color:=panelColor
+    else
+      TListView(control).Color:=inputColor;
+    TListView(control).Font.Style:=fontStyle;
+    TListView(control).Font.Color:=textColor;
+  end;
+
+  if control is TCustomControl then
+  begin
+    TCustomControl(control).Color:=panelColor;
+    TCustomControl(control).Font.Style:=fontStyle;
+    TCustomControl(control).Font.Color:=textColor;
+  end;
+
+  if control is TTablist then
+  begin
+    TTablist(control).Color:=panelColor;
+    TTablist(control).Brush.Color:=panelColor;
+    TTablist(control).Font.Style:=fontStyle;
+    TTablist(control).Font.Color:=textColor;
+  end;
+
+  if control is TWinControl then
+    for i:=0 to TWinControl(control).ControlCount-1 do
+      ApplyThemeToControl(TWinControl(control).Controls[i], darkMode);
+
+  if control=Self then
+  begin
+    Self.Color:=bgColor;
+    Self.Font.Style:=fontStyle;
+    Self.Font.Color:=textColor;
+  end;
+end;
+
+procedure TMainForm.ApplyMainTheme(darkMode: boolean);
+begin
+  ApplyThemeToControl(Self, darkMode);
+
+  if darkMode then
+  begin
+    foundlistColors.NormalValueColor := $EAEAEA;
+    foundlistColors.DynamicColor := $EAEAEA;
+  end
+  else
+  begin
+    foundlistColors.NormalValueColor := GetSysColor(COLOR_WINDOWTEXT);
+    foundlistColors.DynamicColor := GetSysColor(COLOR_WINDOWTEXT);
+  end;
+
+  if darkMode then
+  begin
+    if DarkModeButton<>nil then
+      DarkModeButton.Caption:='Light Mode';
+    if miToggleDarkMode<>nil then
+      miToggleDarkMode.Caption:='Light Mode';
+  end
+  else
+  begin
+    if DarkModeButton<>nil then
+      DarkModeButton.Caption:='Dark Mode';
+    if miToggleDarkMode<>nil then
+      miToggleDarkMode.Caption:='Dark Mode';
+  end;
+
+  Panel5Resize(Panel5);
+  UndoScan.BringToFront;
+
+  foundlist3.Invalidate;
+end;
+
+procedure TMainForm.ToggleDarkMode;
+begin
+  FDarkModeEnabled:=not FDarkModeEnabled;
+  ApplyMainTheme(FDarkModeEnabled);
 end;
 
 
@@ -5914,7 +6135,7 @@ begin
 
   tempbitmap := TBitmap.Create;
 
-  scanvalue.Text := '';
+  scanvalue.Text := 'Value';
 
 (* removed because it uses symhandler now
   {$ifdef cpu64}
@@ -5949,9 +6170,11 @@ begin
 
   ProcessHandler.ProcessHandle := 0;
 
-  logo.Hint := strClickToGoHome;
+  logo.Hint := '';
 
-  logo.ShowHint := True;
+  logo.ShowHint := False;
+  logo.Visible := False;
+  LogoPanel.Visible := False;
 
   newaddress := 0;
 
@@ -5966,7 +6189,6 @@ begin
 
   //allignment fixes for some window style's that mess up with thick borders (like vista)
   differentWidth := logopanel.left - (clientwidth - logopanel.Width);
-  btnAddAddressManually.Left := clientwidth - btnAddAddressManually.Width;
   commentbutton.left := clientwidth - commentbutton.Width;
   logopanel.left := clientwidth - logopanel.Width;
   ProgressBar.Width := ProgressBar.Width - differentwidth;
@@ -6025,6 +6247,9 @@ begin
     panel5.Height := x[5];
     foundlist3.columns[0].Width := x[6];
   end;
+
+  if addresslist.headers.Sections.Count>0 then
+    addresslist.headers.Sections[0].Width := addresslist.headers.Sections[0].Width + 10;
 
   mainform:=self;
 
@@ -6930,14 +7155,8 @@ begin
 end;
 
 procedure TMainForm.LogoClick(Sender: TObject);
-var s: string;
 begin
-  s:=format('http://www.cheatengine.org/?referredby=CE%.2f',[ceversion]);
-  if messagedlg(rsDoYouWantToGoToTheCheatEngineWebsite, mtConfirmation,
-    [mbYes, mbNo], 0) = mrYes then
-    ShellExecute(0, PChar('open'), PChar(s),
-      PChar(''), PChar(''), SW_MAXIMIZE);
-
+  // Disabled for TRR build.
 end;
 
 procedure TMainForm.VarTypeDropDown(Sender: TObject);
@@ -7979,7 +8198,7 @@ begin
     exit;
 
   panel7.DoubleBuffered := True;
-  flashprocessbutton := tflash.Create(False);
+  flashprocessbutton := nil;
 
 
 
@@ -8130,6 +8349,16 @@ begin
   else
     label6.AnchorSideTop.Control:=ProgressBar;
 
+  FDarkModeEnabled:=true;
+  try
+    FDarkModeEnabled:=true;
+  except
+    FDarkModeEnabled:=true;
+  end;
+
+  ApplyMainTheme(FDarkModeEnabled);
+  UndoScan.BringToFront;
+
 
   panel5resize(panel5);
 
@@ -8202,6 +8431,10 @@ begin
   btnAddAddressManually.ClientHeight:=i+4;
   btnMemoryView.ClientHeight:=i+4;
 
+  btnAddAddressManually.Height:=SpeedButton2.Height;
+  btnMemoryView.Height:=SpeedButton2.Height;
+  SpeedButton3.Height:=SpeedButton2.Height;
+
 
   {$ifdef windows}
   cbi.cbSize:=sizeof(cbi);
@@ -8257,13 +8490,16 @@ begin
   if i>gbScanOptions.left then
     i:=gbScanOptions.left-4;
 
+  // Keep this group fixed-size: never allow left+right anchoring.
+  gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
+
   if i+speedbutton3.Width>gbScanOptions.left then
     dec(i, (i+speedbutton3.Width)-gbScanOptions.left)
   else
   begin
     gbScanOptions.AnchorSideLeft.Control:=speedbutton3;
     gbScanOptions.AnchorSideLeft.Side:=asrRight;
-    gbScanOptions.Anchors:=gbScanOptions.Anchors+[akLeft];
+    gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
   end;
 
   if i<0 then
@@ -8276,8 +8512,9 @@ begin
 
 
 
-  if speedbutton2.top<btnMemoryView.Top then
-    foundlist3.AnchorSideBottom.Control:=speedbutton2;
+  foundlist3.AnchorSideBottom.Control:=gbScanOptions;
+  foundlist3.AnchorSideBottom.Side:=asrBottom;
+  foundlist3.Height:=(gbScanOptions.Top+gbScanOptions.Height)-foundlist3.Top;
 
 
   lblcompareToSavedScan.left:=btnNewScan.left-(lblcompareToSavedScan.Width div 2)+((btnNextScan.left+btnNextScan.Width-btnNewScan.left) div 2);
@@ -8358,9 +8595,9 @@ begin
   btnSetSpeedhack2.AutoSize:=false;
   btnSetSpeedhack2.Height:=btnAddAddressManually.Height;
 
-  scantype.Anchors:=[akRight];
-  scantype.AnchorSideTop.Control:=nil;
-  scantype.Anchors:=[akRight, akTop];
+  scantype.Anchors:=[akTop, akLeft, akRight];
+  scantype.AnchorSideTop.Control:=lblScanType;
+  scantype.AnchorSideTop.Side:=asrBottom;
 
   if not memscan.canWriteResults then
     MessageDlg(Format(rsInvalidScanFolder, [memscan.GetScanFolder]), mtError, [mbOk], 0);
@@ -8545,6 +8782,11 @@ begin
     memscan.OnScanDone:=oldScanDone;
     memscan.OnInitialScanDone:=oldInitialScanDone;
   end;
+end;
+
+procedure TMainForm.DarkModeButtonClick(Sender: TObject);
+begin
+  ToggleDarkMode;
 end;
 
 procedure TMainForm.cbCaseSensitiveClick(Sender: TObject);
@@ -10198,6 +10440,7 @@ begin
   saveformposition(self, x);
 
   cereg.writeBool('Debug', miEnableLCLDebug.checked);
+  cereg.writeBool('DarkMode', FDarkModeEnabled);
 
 
   if foundlist <> nil then

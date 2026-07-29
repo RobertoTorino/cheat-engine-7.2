@@ -1,0 +1,43 @@
+name: nightly-develop
+
+on:
+  push:
+    branches:
+      - develop
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Install Lazarus 2.0.10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-2.0.10-fpc-3.2.0-win64.exe'
+          Invoke-WebRequest -Uri 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.0.10/lazarus-2.0.10-fpc-3.2.0-win64.exe/download' -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\lazarus' -Wait
+
+      - name: Build nightly package
+        shell: pwsh
+        run: |
+          ./Build-CE64-Portable.ps1 -LazbuildPath 'C:\lazarus\lazbuild.exe' -OutputDir 'artifacts' -WriteShortLog
+
+      - name: Upload nightly artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-develop-${{ github.run_number }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 14

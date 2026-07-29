@@ -3,3 +3,6 @@ Cheat Engine/backup
 Cheat Engine/bin
 
 /.idea/
+
+# Generated build artifacts
+/artifacts/

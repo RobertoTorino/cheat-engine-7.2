@@ -98,6 +98,28 @@ function Write-ShortBuildLog {
     Write-Host "Short build log written: $Path"
 }
 
+function Test-FileRenameWritable {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) {
+        return $true
+    }
+
+    $probePath = "$Path.lockprobe"
+    if (Test-Path $probePath) {
+        Remove-Item $probePath -Force -ErrorAction SilentlyContinue
+    }
+
+    try {
+        Move-Item -Path $Path -Destination $probePath -Force -ErrorAction Stop
+        Move-Item -Path $probePath -Destination $Path -Force -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSCommandPath
 $ceDir = Join-Path $repoRoot 'Cheat Engine'
 $projectFile = Join-Path $ceDir 'cheatengine.lpi'
@@ -128,6 +150,10 @@ $buildOutput = @()
 $buildExitCode = 0
 
 try {
+    if (-not (Test-FileRenameWritable -Path $expectedExe)) {
+        throw "Target executable is locked or not writable: $expectedExe. Close running Cheat Engine instances and tools that may hold this file (Explorer preview, AV scanner, debugger), then retry."
+    }
+
     if (-not $SkipBuild) {
         Push-Location $ceDir
         try {
