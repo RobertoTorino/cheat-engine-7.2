@@ -1,3 +1,5 @@
+[![release-main](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/release-main.yml/badge.svg)](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/release-main.yml) [![nightly-develop](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/nightly-develop.yml/badge.svg)](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/nightly-develop.yml)
+
 ## Cheat Engine 7.2 - TRR
 
 This repository contains a customized Cheat Engine 7.2 build used for Tekken Revolution Reborn.
