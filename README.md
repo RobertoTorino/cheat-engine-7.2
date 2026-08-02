@@ -1,3 +1,5 @@
+[![release-main](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/release-main.yml/badge.svg?branch=cheat-engine-7.5-portable)](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/release-main.yml)  [![nightly-develop](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/nightly-develop.yml/badge.svg?branch=cheat-engine-7.5-portable)](https://github.com/RobertoTorino/cheat-engine-7.2/actions/workflows/nightly-develop.yml)
+
 <p align="center">
     <a href="https://github.com/cheat-engine/cheat-engine/raw/master/Cheat%20Engine/images">
         <img src="https://github.com/cheat-engine/cheat-engine/raw/master/Cheat%20Engine/images/celogo.png" />
