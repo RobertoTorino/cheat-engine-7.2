@@ -1,0 +1,60 @@
+name: release-main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lazarus 2.2.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-2.2.2-fpc-3.2.2-win64.exe'
+          $downloadUrl = 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2/lazarus-2.2.2-fpc-3.2.2-win64.exe'
+          & curl.exe --fail --location --retry 5 --retry-delay 5 --retry-all-errors --output $installer $downloadUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lazarus download failed with curl exit code $LASTEXITCODE"
+          }
+
+          $stream = [System.IO.File]::OpenRead($installer)
+          try {
+            if ($stream.Length -lt 100MB -or $stream.ReadByte() -ne 0x4D -or $stream.ReadByte() -ne 0x5A) {
+              throw "Downloaded Lazarus installer is invalid (size: $($stream.Length) bytes)"
+            }
+          } finally {
+            $stream.Dispose()
+          }
+
+          Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\lazarus-2.2.2' -Wait
+
+      - name: Build portable release
+        shell: pwsh
+        run: |
+          ./Build-CE64-Portable.ps1 -LazbuildPath 'C:\lazarus-2.2.2\lazbuild.exe' -OutputDirectory 'artifacts'
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cheat-engine-7.5-trr-release-${{ github.run_number }}
+          path: artifacts/*.zip
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: 7.5-trr-main-${{ github.run_number }}
+          name: Cheat Engine 7.5 TRR Build #${{ github.run_number }}
+          generate_release_notes: true
+          files: artifacts/*.zip

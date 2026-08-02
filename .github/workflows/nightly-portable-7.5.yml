@@ -1,0 +1,55 @@
+name: nightly-portable-7.5
+
+on:
+  push:
+    branches:
+      - portable-7.5
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout portable 7.5
+        uses: actions/checkout@v4
+
+      - name: Install Lazarus 2.2.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-2.2.2-fpc-3.2.2-win64.exe'
+          $downloadUrl = 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%202.2.2/lazarus-2.2.2-fpc-3.2.2-win64.exe'
+          & curl.exe --fail --location --retry 5 --retry-delay 5 --retry-all-errors --output $installer $downloadUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lazarus download failed with curl exit code $LASTEXITCODE"
+          }
+
+          $stream = [System.IO.File]::OpenRead($installer)
+          try {
+            if ($stream.Length -lt 100MB -or $stream.ReadByte() -ne 0x4D -or $stream.ReadByte() -ne 0x5A) {
+              throw "Downloaded Lazarus installer is invalid (size: $($stream.Length) bytes)"
+            }
+          } finally {
+            $stream.Dispose()
+          }
+
+          Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\lazarus-2.2.2' -Wait
+
+      - name: Build nightly package
+        shell: pwsh
+        run: |
+          ./Build-CE64-Portable.ps1 -LazbuildPath 'C:\lazarus-2.2.2\lazbuild.exe' -OutputDirectory 'artifacts'
+
+      - name: Upload nightly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cheat-engine-7.5-trr-nightly-${{ github.run_number }}
+          path: artifacts/*.zip
+          if-no-files-found: error
+          retention-days: 14
