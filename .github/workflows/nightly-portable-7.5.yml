@@ -3,13 +3,13 @@ name: nightly-portable-7.5
 on:
   push:
     branches:
-      - portable-7.5
+      - cheat-engine-7.5-portable
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -53,3 +53,12 @@ jobs:
           path: artifacts/*.zip
           if-no-files-found: error
           retention-days: 14
+
+      - name: Create nightly prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: 7.5-trr-nightly-${{ github.run_number }}
+          name: Cheat Engine 7.5 TRR Nightly #${{ github.run_number }}
+          prerelease: true
+          generate_release_notes: true
+          files: artifacts/*.zip
