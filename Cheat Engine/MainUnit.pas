@@ -553,6 +553,8 @@ type
     Save1: TMenuItem;
     Load1: TMenuItem;
     Settings1: TMenuItem;
+    miAdvancedOptionsTop: TMenuItem;
+    miTableExtrasTop: TMenuItem;
     N6: TMenuItem;
     a1: TMenuItem;
     b1: TMenuItem;

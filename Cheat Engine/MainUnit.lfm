@@ -9,7 +9,7 @@ object MainForm: TMainForm
   VertScrollBar.Visible = False
   AllowDropFiles = True
   AutoSize = True
-  Caption = 'Cheat Engine'
+  Caption = 'Cheat Engine 7.5 - TRR'
   ClientHeight = 572
   ClientWidth = 650
   Menu = MainMenu1
@@ -71,6 +71,7 @@ object MainForm: TMainForm
       OnClick = advancedbuttonClick
       ShowHint = True
       ParentShowHint = False
+      Visible = False
     end
     object CommentButton: TSpeedButton
       Left = 584
@@ -83,6 +84,7 @@ object MainForm: TMainForm
       Flat = True
       OnClick = CommentButtonClick
       ParentShowHint = False
+      Visible = False
     end
     object lblSigned: TLabel
       AnchorSideLeft.Control = Panel4
@@ -2451,11 +2453,20 @@ object MainForm: TMainForm
     end
     object Edit3: TMenuItem
       Caption = '&Edit'
-      object Settings1: TMenuItem
-        Caption = 'Settings'
-        ImageIndex = 2
-        OnClick = SettingsClick
-      end
+      Visible = False
+    end
+    object Settings1: TMenuItem
+      Caption = 'Settings'
+      ImageIndex = 2
+      OnClick = SettingsClick
+    end
+    object miAdvancedOptionsTop: TMenuItem
+      Caption = 'Advanced Options'
+      OnClick = advancedbuttonClick
+    end
+    object miTableExtrasTop: TMenuItem
+      Caption = 'Table Extras'
+      OnClick = CommentButtonClick
     end
     object Process1: TMenuItem
       Caption = '&Process'
