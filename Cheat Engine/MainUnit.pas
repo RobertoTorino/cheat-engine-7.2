@@ -8824,6 +8824,10 @@ begin
   btnAddAddressManually.ClientHeight:=i+4;
   btnMemoryView.ClientHeight:=i+4;
 
+  btnAddAddressManually.Height:=SpeedButton2.Height;
+  btnMemoryView.Height:=SpeedButton2.Height;
+  SpeedButton3.Height:=SpeedButton2.Height;
+
 
   {$ifdef windows}
   cbi.cbSize:=sizeof(cbi);
@@ -8879,13 +8883,15 @@ begin
   if i>gbScanOptions.left then
     i:=gbScanOptions.left-4;
 
+  gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
+
   if i+speedbutton3.Width>gbScanOptions.left then
     dec(i, (i+speedbutton3.Width)-gbScanOptions.left)
   else
   begin
     gbScanOptions.AnchorSideLeft.Control:=speedbutton3;
     gbScanOptions.AnchorSideLeft.Side:=asrRight;
-    gbScanOptions.Anchors:=gbScanOptions.Anchors+[akLeft];
+    gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
   end;
 
   if i<0 then
@@ -8898,8 +8904,9 @@ begin
 
 
 
-  if speedbutton2.top<btnMemoryView.Top then
-    foundlist3.AnchorSideBottom.Control:=speedbutton2;
+  foundlist3.AnchorSideBottom.Control:=gbScanOptions;
+  foundlist3.AnchorSideBottom.Side:=asrBottom;
+  foundlist3.Height:=(gbScanOptions.Top+gbScanOptions.Height)-foundlist3.Top;
 
 
   lblcompareToSavedScan.left:=btnNewScan.left-(lblcompareToSavedScan.Width div 2)+((btnNextScan.left+btnNextScan.Width-btnNewScan.left) div 2);

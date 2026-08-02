@@ -43,13 +43,25 @@ New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
 Remove-Item -LiteralPath $stagingDirectory -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
 
-Get-ChildItem -LiteralPath $binaryDirectory -Force | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $stagingDirectory -Recurse -Force
+$trackedBinaryFiles = @(& git -C $repositoryRoot ls-files -- 'Cheat Engine/bin')
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not enumerate tracked runtime files (git exit code $LASTEXITCODE)"
 }
 
-Get-ChildItem -LiteralPath $stagingDirectory -Recurse -File |
-    Where-Object { $_.Extension -in '.dbg', '.bat' } |
-    Remove-Item -Force
+foreach ($trackedFile in $trackedBinaryFiles) {
+    if ([System.IO.Path]::GetExtension($trackedFile) -in '.dbg', '.bat') {
+        continue
+    }
+
+    $relativePath = $trackedFile.Substring('Cheat Engine/bin/'.Length)
+    $sourcePath = Join-Path $repositoryRoot $trackedFile
+    $destinationPath = Join-Path $stagingDirectory $relativePath
+    $destinationDirectory = Split-Path -Parent $destinationPath
+    New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+}
+
+Copy-Item -LiteralPath $executablePath -Destination $stagingDirectory -Force
 
 Compress-Archive -Path (Join-Path $stagingDirectory '*') -DestinationPath $archivePath -CompressionLevel Optimal
 Remove-Item -LiteralPath $stagingDirectory -Recurse -Force

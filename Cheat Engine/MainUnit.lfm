@@ -2309,7 +2309,7 @@ object MainForm: TMainForm
     Images = mfImageList
     Top = 72
     object File1: TMenuItem
-      Caption = '&File'
+      Caption = '  &File'
       OnClick = File1Click
       object miAddTab: TMenuItem
         Caption = 'Add scan tab'
