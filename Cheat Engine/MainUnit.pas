@@ -555,7 +555,6 @@ type
     Settings1: TMenuItem;
     miAdvancedOptionsTop: TMenuItem;
     miTableExtrasTop: TMenuItem;
-    miToggleDarkMode: TMenuItem;
     N6: TMenuItem;
     a1: TMenuItem;
     b1: TMenuItem;
@@ -708,7 +707,6 @@ type
     procedure Removeselectedaddresses1Click(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure CommentButtonClick(Sender: TObject);
-    procedure DarkModeButtonClick(Sender: TObject);
     procedure Copy1Click(Sender: TObject);
     procedure Cut1Click(Sender: TObject);
     procedure Paste1Click(Sender: TObject);
@@ -794,10 +792,6 @@ type
     isbit: boolean;
     tempbitmap: Tbitmap;
     dontrunshow: boolean;
-    FDarkModeEnabled: boolean;
-    procedure ApplyThemeToControl(control: TControl; darkMode: boolean);
-    procedure ApplyMainTheme(darkMode: boolean);
-    procedure ToggleDarkMode;
     procedure LoadCustomizedToolbarIcons;
 
   private
@@ -2343,8 +2337,8 @@ begin
   vartype.Enabled := False;
   scantype.Enabled := False;
   scantext.Enabled := False;
-  lblScanType.Enabled := False;
-  lblValueType.Enabled := False;
+  lblScanType.Enabled := True;
+  lblValueType.Enabled := True;
   cbHexadecimal.Enabled := False;
   cbCaseSensitive.Enabled := False;
 
@@ -3026,12 +3020,12 @@ begin
     vartype.Enabled := False;
     scantype.Enabled := False;
     scantext.Enabled := False;
-    lblScanType.Enabled := False;
-    lblValueType.Enabled := False;
+    lblScanType.Enabled := True;
+    lblValueType.Enabled := True;
 
     scanvalue.Visible := False;
     scantext.Visible := False;
-    scanvalue.Text := '';
+    scanvalue.Text := 'Value';
     cbHexadecimal.Enabled := False;
     cbCaseSensitive.Enabled := False;
     cbNot.Visible:=false;
@@ -5756,172 +5750,6 @@ begin
 end;
 
 
-procedure TMainForm.ApplyThemeToControl(control: TControl; darkMode: boolean);
-const
-  DARK_BG = $333333;
-  DARK_INPUT = $FAFAFA;
-  DARK_TEXT = $EAEAEA;
-var
-  i: integer;
-  backgroundColor, inputColor, textColor, inputTextColor: TColor;
-  fontStyle: TFontStyles;
-begin
-  if control=nil then
-    exit;
-
-  if darkMode then
-  begin
-    backgroundColor:=DARK_BG;
-    inputColor:=DARK_INPUT;
-    textColor:=DARK_TEXT;
-    inputTextColor:=clBlack;
-    fontStyle:=[fsBold];
-  end
-  else
-  begin
-    backgroundColor:=clBtnFace;
-    inputColor:=clWindow;
-    textColor:=clWindowText;
-    inputTextColor:=clWindowText;
-    fontStyle:=[];
-  end;
-
-  if control is TLabel then
-  begin
-    TLabel(control).Font.Style:=fontStyle;
-    TLabel(control).Font.Color:=textColor;
-  end;
-
-  if control is TButton then
-  begin
-    TButton(control).Font.Style:=fontStyle;
-    TButton(control).Font.Color:=textColor;
-    TButton(control).Color:=backgroundColor;
-  end;
-
-  if control is TSpeedButton then
-  begin
-    TSpeedButton(control).Font.Style:=fontStyle;
-    TSpeedButton(control).Font.Color:=textColor;
-  end;
-
-  if control is TCheckBox then
-  begin
-    TCheckBox(control).ParentColor:=false;
-    TCheckBox(control).Font.Style:=fontStyle;
-    TCheckBox(control).Font.Color:=textColor;
-  end;
-
-  if control is TRadioButton then
-  begin
-    TRadioButton(control).ParentColor:=false;
-    TRadioButton(control).Font.Style:=fontStyle;
-    TRadioButton(control).Font.Color:=textColor;
-  end;
-
-  if control is TGroupBox then
-  begin
-    TGroupBox(control).ParentColor:=false;
-    TGroupBox(control).Color:=backgroundColor;
-    TGroupBox(control).Font.Style:=fontStyle;
-    TGroupBox(control).Font.Color:=textColor;
-  end;
-
-  if control is TPanel then
-  begin
-    TPanel(control).ParentColor:=false;
-    TPanel(control).Color:=backgroundColor;
-    TPanel(control).Font.Style:=fontStyle;
-    TPanel(control).Font.Color:=textColor;
-  end;
-
-  if control is TEdit then
-  begin
-    TEdit(control).ParentColor:=false;
-    TEdit(control).Color:=inputColor;
-    TEdit(control).Font.Style:=fontStyle;
-    TEdit(control).Font.Color:=inputTextColor;
-  end;
-
-  if control is TComboBox then
-  begin
-    TComboBox(control).ParentColor:=false;
-    TComboBox(control).Color:=inputColor;
-    TComboBox(control).Font.Style:=fontStyle;
-    TComboBox(control).Font.Color:=inputTextColor;
-  end;
-
-  if control is TListView then
-  begin
-    TListView(control).ParentColor:=false;
-    if darkMode then
-      TListView(control).Color:=backgroundColor
-    else
-      TListView(control).Color:=inputColor;
-    TListView(control).Font.Style:=fontStyle;
-    TListView(control).Font.Color:=textColor;
-  end;
-
-  if control is TCustomControl then
-  begin
-    TCustomControl(control).Color:=backgroundColor;
-    TCustomControl(control).Font.Style:=fontStyle;
-    TCustomControl(control).Font.Color:=textColor;
-  end;
-
-  if control is TTablist then
-  begin
-    TTablist(control).Color:=backgroundColor;
-    TTablist(control).Brush.Color:=backgroundColor;
-    TTablist(control).Font.Style:=fontStyle;
-    TTablist(control).Font.Color:=textColor;
-  end;
-
-  if control is TWinControl then
-    for i:=0 to TWinControl(control).ControlCount-1 do
-      ApplyThemeToControl(TWinControl(control).Controls[i], darkMode);
-
-  if control=Self then
-  begin
-    Color:=backgroundColor;
-    Font.Style:=fontStyle;
-    Font.Color:=textColor;
-  end;
-end;
-
-procedure TMainForm.ApplyMainTheme(darkMode: boolean);
-begin
-  ApplyThemeToControl(Self, darkMode);
-
-  if darkMode then
-  begin
-    foundlistColors.NormalValueColor:=$EAEAEA;
-    foundlistColors.DynamicColor:=$EAEAEA;
-    miToggleDarkMode.Caption:='Light Mode';
-  end
-  else
-  begin
-    foundlistColors.NormalValueColor:=clWindowText;
-    foundlistColors.DynamicColor:=clWindowText;
-    miToggleDarkMode.Caption:='Dark Mode';
-  end;
-
-  Panel5Resize(Panel5);
-  UndoScan.BringToFront;
-  foundlist3.Invalidate;
-end;
-
-procedure TMainForm.ToggleDarkMode;
-begin
-  FDarkModeEnabled:=not FDarkModeEnabled;
-  ApplyMainTheme(FDarkModeEnabled);
-end;
-
-procedure TMainForm.DarkModeButtonClick(Sender: TObject);
-begin
-  ToggleDarkMode;
-end;
-
 procedure TMainForm.LoadCustomizedToolbarIcons;
 const
   PROCESS_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFhSURBVDhPpZNLSwJhFIZn2T9p06YsclJpVdBl66ZFtDFxF4g6GmhOFDQ/IEJcjInmpVKyWqcwJmKpC6GLuXFRBF22BvHGmZjQGWXAFg+c833nfb7NdxgAzH9gxg2G12mW/RoGyjJTRuNnI+WDmnqCQ1qwISXY5Fp9T1BWFqAkoJt6wo2rzA7en5L4aCWRz+6iGnf3zBB9Ba2MD3elA+DtvIeHcgiPJ159QT7m1YQV8nGfvkA65TVBBSmzrS+QX+kTJgpHm/qC+2MOzUpYE27ehNFIevQFRCXmgnQhoPOcRecli+KlAMfKHBzWWXwX97SCatwDNdeiEyH/qkxRdKIcdWHeMIqN5Qncxn5nZIE/ENgP8ryoxs1x0RmLBQTVdLbFB8VF42TBurQgUU9Zzd9WaLfbI6zJBIJq9f3fLnQ3tVpt7CyXWyPESMTGms0gqFbOaWagYN1uP1QvjBqaGSgYhh8Yc8DG961aogAAAABJRU5ErkJggg==';
@@ -5991,7 +5819,6 @@ begin
   Settings1.MenuIndex:=3;
   miAdvancedOptionsTop.MenuIndex:=4;
   miTableExtrasTop.MenuIndex:=5;
-  miToggleDarkMode.MenuIndex:=6;
   miHelp.MenuIndex:=MainMenu1.Items.Count-1;
 
   mtid:=MainThreadID;
@@ -6291,7 +6118,7 @@ begin
 
   tempbitmap := TBitmap.Create;
 
-  scanvalue.Text := '';
+  scanvalue.Text := 'Value';
 
 (* removed because it uses symhandler now
   {$ifdef cpu64}
@@ -6403,6 +6230,9 @@ begin
     panel5.Height := x[5];
     foundlist3.columns[0].Width := x[6];
   end;
+
+  if ClientWidth<765 then
+    ClientWidth:=765;
 
   mainform:=self;
 
@@ -8538,11 +8368,6 @@ begin
   else
     firsttime := True;
 
-  if reg.ValueExists('DarkMode') then
-    FDarkModeEnabled:=reg.ReadBool('DarkMode')
-  else
-    FDarkModeEnabled:=true;
-
   if firsttime then
   begin
     reg.WriteBool('First Time User', False);
@@ -8800,9 +8625,6 @@ begin
   end;
   freeandnil(reg);
 
-  ApplyMainTheme(FDarkModeEnabled);
-
-
   btnNewScan.autosize:=true;
   btnNextScan.AutoSize:=true;
   btnNewScan.autosize:=false;
@@ -8855,13 +8677,6 @@ begin
 
   vartype.Constraints.MinWidth:=i;
 
-  i:=foundlist3.width;
-  if undoscan.visible and (undoscan.left<btnNextScan.Left+btnNextScan.Width) then
-  begin
-    j:=(btnNextScan.Left+btnNextScan.Width)-undoscan.left;
-    i:=foundlist3.width-j;
-  end;
-
   pnlFloat.Visible:=true;
   panel9.Constraints.MinWidth:=panel9.Width;
   pnlFloat.Visible:=false;
@@ -8874,33 +8689,8 @@ begin
   pnlScanValueOptions.Constraints.MinHeight:=rbBit.Height+rbDec.height;
   pnlScanValueOptions.Constraints.MinWidth:=max(rbDec.width, rbBit.width);
 
-  if i>pnlScanValueOptions.left then
-    i:=pnlScanValueOptions.left-4;
-
-  if i>lblValueType.left then
-    i:=lblValueType.left-4;
-
-  if i>gbScanOptions.left then
-    i:=gbScanOptions.left-4;
-
   gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
-
-  if i+speedbutton3.Width>gbScanOptions.left then
-    dec(i, (i+speedbutton3.Width)-gbScanOptions.left)
-  else
-  begin
-    gbScanOptions.AnchorSideLeft.Control:=speedbutton3;
-    gbScanOptions.AnchorSideLeft.Side:=asrRight;
-    gbScanOptions.Anchors:=gbScanOptions.Anchors-[akLeft];
-  end;
-
-  if i<0 then
-  begin
-    clientwidth:=clientwidth+(-i);
-    foundlist3.width:=1;
-  end
-  else
-    foundlist3.width:=i;
+  foundlist3.Width:=gbScanOptions.Left-foundlist3.Left-foundlist3.BorderSpacing.Right;
 
 
 
@@ -8917,13 +8707,9 @@ begin
   if i>0 then
     scantext.BorderSpacing.Top:=scantext.BorderSpacing.Top+i;
 
-  if pnlScanValueOptions.top+pnlScanValueOptions.Height>scanvalue.top+scanvalue.height then
-    scantype.AnchorSideTop.Control:=pnlScanValueOptions
-  else
-  begin
-    scantype.AnchorSideTop.Control:=scanvalue;
-    scantype.BorderSpacing.Top:=2;
-  end;
+  scantype.AnchorSideTop.Control:=lblScanType;
+  scantype.AnchorSideTop.Side:=asrBottom;
+  scantype.BorderSpacing.Top:=6;
 
   panel9.borderspacing.Top:=(scantype.height div 2)-(cbNot.Height div 2);
 
@@ -10878,8 +10664,6 @@ begin
   x[6]:=foundlist3.columns[0].Width;
 
   saveformposition(self, x);
-  cereg.writeBool('DarkMode', FDarkModeEnabled);
-
   if foundlist <> nil then
     foundlist.Deinitialize;
 

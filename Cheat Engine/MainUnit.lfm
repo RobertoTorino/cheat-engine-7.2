@@ -3,7 +3,7 @@ object MainForm: TMainForm
   Left = 858
   Height = 595
   Top = 137
-  Width = 620
+  Width = 765
   HelpContext = 1
   HorzScrollBar.Visible = False
   VertScrollBar.Visible = False
@@ -11,7 +11,8 @@ object MainForm: TMainForm
   AutoSize = True
   Caption = 'Cheat Engine 7.5 - TRR'
   ClientHeight = 575
-  ClientWidth = 620
+  ClientWidth = 765
+  Font.Color = clWhite
   Menu = MainMenu1
   OnClose = FormClose
   OnCloseQuery = FormCloseQuery
@@ -27,7 +28,7 @@ object MainForm: TMainForm
     Left = 0
     Height = 7
     Top = 441
-    Width = 620
+    Width = 765
     Align = alTop
     AutoSnap = False
     Beveled = True
@@ -40,7 +41,7 @@ object MainForm: TMainForm
     Left = 0
     Height = 95
     Top = 448
-    Width = 620
+    Width = 765
     Align = alClient
     BevelOuter = bvNone
     BorderWidth = 1
@@ -52,11 +53,11 @@ object MainForm: TMainForm
     Left = 0
     Height = 32
     Top = 543
-    Width = 620
+    Width = 765
     Align = alBottom
     AutoSize = True
     ClientHeight = 32
-    ClientWidth = 620
+    ClientWidth = 765
     TabOrder = 1
     object advancedbutton: TSpeedButton
       Left = 1
@@ -74,7 +75,7 @@ object MainForm: TMainForm
       Visible = False
     end
     object CommentButton: TSpeedButton
-      Left = 584
+      Left = 729
       Height = 30
       Top = 1
       Width = 65
@@ -104,11 +105,11 @@ object MainForm: TMainForm
     Left = 0
     Height = 441
     Top = 0
-    Width = 620
+    Width = 765
     Align = alTop
     BevelOuter = bvNone
     ClientHeight = 441
-    ClientWidth = 620
+    ClientWidth = 765
     TabOrder = 2
     OnResize = Panel5Resize
     object ProcessLabel: TLabel
@@ -162,9 +163,10 @@ object MainForm: TMainForm
       Height = 15
       Top = 120
       Width = 52
-      BorderSpacing.Top = 3
+      BorderSpacing.Top = 6
       Caption = 'Scan Type'
-      Enabled = False
+      Font.Color = clWhite
+      ParentFont = False
       ParentColor = False
     end
     object lblValueType: TLabel
@@ -177,7 +179,8 @@ object MainForm: TMainForm
       Width = 55
       BorderSpacing.Top = 2
       Caption = 'Value Type'
-      Enabled = False
+      Font.Color = clWhite
+      ParentFont = False
       ParentColor = False
     end
     object LoadButton: TSpeedButton
@@ -617,7 +620,6 @@ object MainForm: TMainForm
       AnchorSideLeft.Control = btnNewScan
       AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = Foundlist3
-      AnchorSideRight.Control = btnNewScan
       Left = 408
       Height = 25
       Top = 46
@@ -631,22 +633,25 @@ object MainForm: TMainForm
       TabOrder = 1
     end
     object ScanType: TComboBox
-      AnchorSideLeft.Control = VarType
-      AnchorSideTop.Control = pnlScanValueOptions
+      AnchorSideLeft.Control = lblScanType
+      AnchorSideTop.Control = lblScanType
       AnchorSideTop.Side = asrBottom
       AnchorSideRight.Control = Panel9
       Left = 322
       Height = 23
-      Top = 124
-      Width = 200
+      Top = 137
+      Width = 170
       HelpContext = 9
       Anchors = [akTop, akLeft, akRight]
       BorderSpacing.Right = 6
+      BorderSpacing.Top = 6
       BorderSpacing.Bottom = 2
+      Color = clWhite
       DropDownCount = 9
       Enabled = False
       ItemHeight = 15
       ItemIndex = 0
+      Font.Color = clBlack
       Items.Strings = (
         'Exact value'
         'Increased value'
@@ -660,25 +665,29 @@ object MainForm: TMainForm
       )
       OnChange = ScanTypeChange
       Style = csDropDownList
+      ParentFont = False
       TabOrder = 6
       Text = 'Exact value'
     end
     object VarType: TComboBox
-      AnchorSideTop.Control = ScanType
+      AnchorSideLeft.Control = lblValueType
+      AnchorSideTop.Control = lblValueType
       AnchorSideTop.Side = asrBottom
       AnchorSideRight.Control = Panel9
       Left = 322
       Height = 23
-      Top = 149
-      Width = 200
+      Top = 164
+      Width = 170
       HelpContext = 7
-      Anchors = [akTop, akRight]
+      Anchors = [akTop, akLeft, akRight]
       BorderSpacing.Top = 2
       BorderSpacing.Right = 6
+      Color = clWhite
       DropDownCount = 11
       Enabled = False
       ItemHeight = 15
       ItemIndex = 0
+      Font.Color = clBlack
       Items.Strings = (
         'Binary'
         'Byte'
@@ -696,6 +705,7 @@ object MainForm: TMainForm
       OnDropDown = VarTypeDropDown
       PopupMenu = pmValueType
       Style = csDropDownList
+      ParentFont = False
       TabOrder = 7
       Text = 'Binary'
     end
@@ -720,32 +730,39 @@ object MainForm: TMainForm
       TabOrder = 9
     end
     object UndoScan: TButton
+      AnchorSideLeft.Control = btnNextScan
+      AnchorSideLeft.Side = asrBottom
       AnchorSideTop.Control = btnNextScan
-      AnchorSideRight.Control = LogoPanel
-      Left = 515
+      Left = 497
       Height = 25
       Top = 46
       Width = 83
-      Anchors = [akTop, akRight]
+      Anchors = [akTop, akLeft]
       AutoSize = True
-      BorderSpacing.Right = 5
+      BorderSpacing.Left = 10
       Caption = 'Undo Scan'
       Enabled = False
       OnClick = UndoScanClick
       TabOrder = 3
     end
     object scanvalue: TEdit
-      AnchorSideLeft.Control = VarType
-      AnchorSideTop.Control = ScanText
+      AnchorSideLeft.Control = ScanType
+      AnchorSideTop.Control = btnNewScan
       AnchorSideTop.Side = asrBottom
-      AnchorSideRight.Control = andlabel
+      AnchorSideRight.Control = Panel9
+      AnchorSideRight.Side = asrTop
       Left = 322
       Height = 23
-      Top = 94
-      Width = 217
+      Top = 82
+      Width = 170
       Anchors = [akTop, akLeft, akRight]
-      BorderSpacing.Right = 5
+      BorderSpacing.Top = 10
+      BorderSpacing.Right = 6
+      Color = clWhite
       Enabled = False
+      Font.Color = clBlack
+      ParentFont = False
+      Text = 'Value'
       OnKeyPress = ScanvalueoldKeyPress
       PopupMenu = ccpmenu
       TabOrder = 4
@@ -1169,21 +1186,19 @@ object MainForm: TMainForm
       end
     end
     object pnlScanValueOptions: TPanel
-      AnchorSideLeft.Control = SpeedButton3
-      AnchorSideLeft.Side = asrBottom
+      AnchorSideLeft.Control = Panel9
+      AnchorSideLeft.Side = asrTop
       AnchorSideTop.Control = scanvalue
-      AnchorSideTop.Side = asrCenter
-      AnchorSideRight.Control = scanvalue
-      Left = 256
-      Height = 38
-      Top = 86
-      Width = 63
-      Anchors = [akTop, akRight]
+      Left = 498
+      Height = 23
+      Top = 96
+      Width = 74
+      Anchors = [akTop, akLeft]
       AutoSize = True
-      BorderSpacing.Right = 3
+      BorderSpacing.Left = 0
       BevelOuter = bvNone
-      ClientHeight = 38
-      ClientWidth = 63
+      ClientHeight = 23
+      ClientWidth = 74
       TabOrder = 15
       object rbBit: TRadioButton
         AnchorSideLeft.Control = pnlScanValueOptions
@@ -1222,20 +1237,23 @@ object MainForm: TMainForm
       object cbHexadecimal: TCheckBox
         AnchorSideLeft.Control = pnlScanValueOptions
         AnchorSideTop.Control = pnlScanValueOptions
-        AnchorSideTop.Side = asrCenter
         AnchorSideRight.Control = pnlScanValueOptions
         AnchorSideRight.Side = asrBottom
-        Left = 22
+        Left = 0
         Height = 19
         Hint = 'When checked the value you type in is hexadecimal'
-        Top = 10
-        Width = 41
+        Top = 2
+        Width = 74
         HelpContext = 7
-        Alignment = taLeftJustify
-        Anchors = [akTop, akRight]
+        Alignment = taRightJustify
+        Anchors = [akTop, akLeft, akRight]
         Caption = 'Hex'
+        Color = clWhite
         Enabled = False
+        Font.Color = clBlack
         OnClick = cbHexadecimalClick
+        ParentColor = False
+        ParentFont = False
         ParentShowHint = False
         ShowHint = True
         TabOrder = 2
@@ -1245,7 +1263,7 @@ object MainForm: TMainForm
       AnchorSideTop.Control = ScanType
       AnchorSideRight.Control = Panel5
       AnchorSideRight.Side = asrBottom
-      Left = 528
+      Left = 498
       Height = 368
       Top = 124
       Width = 122
@@ -1387,7 +1405,11 @@ object MainForm: TMainForm
           Top = 38
           Width = 40
           Caption = 'Not'
+          Color = clWhite
           Enabled = False
+          Font.Color = clBlack
+          ParentColor = False
+          ParentFont = False
           ParentShowHint = False
           ShowHint = True
           TabOrder = 0
@@ -1431,8 +1453,12 @@ object MainForm: TMainForm
           Top = 0
           Width = 84
           Caption = 'Lua formula'
+          Color = clWhite
           Enabled = False
+          Font.Color = clBlack
           OnChange = cbLuaFormulaChange
+          ParentColor = False
+          ParentFont = False
           ParentShowHint = False
           ShowHint = True
           TabOrder = 8
@@ -1481,9 +1507,13 @@ object MainForm: TMainForm
           Top = 0
           Width = 95
           Caption = 'Unrandomizer'
+          Color = clWhite
           Enabled = False
+          Font.Color = clBlack
           OnChange = cbUnrandomizerClick
           OnMouseDown = cbUnrandomizerMouseDown
+          ParentColor = False
+          ParentFont = False
           TabOrder = 0
         end
         object cbSpeedhack: TCheckBox
@@ -1660,7 +1690,7 @@ object MainForm: TMainForm
       Height = 367
       Hint = 'This list shows all the found addresses that matched your last scan'
       Top = 46
-      Width = 309
+      Width = 454
       Anchors = [akTop, akLeft, akBottom]
       BorderSpacing.Right = 8
       BorderSpacing.Bottom = 0
@@ -1681,6 +1711,7 @@ object MainForm: TMainForm
       Constraints.MinWidth = 1
       DragMode = dmAutomatic
       Font.Name = 'Courier New'
+      Font.Color = clWhite
       HideSelection = False
       MultiSelect = True
       OwnerData = True
@@ -2484,10 +2515,6 @@ object MainForm: TMainForm
     object miTableExtrasTop: TMenuItem
       Caption = 'Table Extras'
       OnClick = CommentButtonClick
-    end
-    object miToggleDarkMode: TMenuItem
-      Caption = 'Dark Mode'
-      OnClick = DarkModeButtonClick
     end
     object Process1: TMenuItem
       Caption = '&Process'
