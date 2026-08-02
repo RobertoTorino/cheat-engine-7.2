@@ -13,7 +13,7 @@ uses
   SaveFirstScan, foundlisthelper, disassembler, tablist, simpleaobscanner,frmSelectionlistunit,
   lua, LuaHandler, lauxlib, lualib,CEDebugger,debughelper ,speedhack2, groupscancommandparser,
   frmautoinjectunit, commonTypeDefs, unrandomizer,savedscanhandler,luafile,hotkeyhandler,
-  genericHotkey,LazLogger,lcltype,FrmMemoryRecordDropdownSettingsUnit,
+  genericHotkey,LazLogger,lcltype,FrmMemoryRecordDropdownSettingsUnit, base64,
   ceguicomponents,formdesignerunit,xmlutils,vartypestrings,plugin,byteinterpreter,
   MenuItemExtra,frmgroupscanalgoritmgeneratorunit
 
@@ -42,7 +42,7 @@ uses
   groupscancommandparser, GraphType, IntfGraphics, RemoteMemoryManager,
   DBK64SecondaryLoader, savedscanhandler, debuggertypedefinitions, networkInterface,
   FrmMemoryRecordDropdownSettingsUnit, xmlutils, zstream, zstreamext, commonTypeDefs,
-  VirtualQueryExCache, LazLogger, LazUTF8, LCLVersion, fgl, betterControls;
+  VirtualQueryExCache, LazLogger, LazUTF8, LCLVersion, fgl, base64, betterControls;
   {$endif}
 //the following are just for compatibility
 
@@ -798,6 +798,7 @@ type
     procedure ApplyThemeToControl(control: TControl; darkMode: boolean);
     procedure ApplyMainTheme(darkMode: boolean);
     procedure ToggleDarkMode;
+    procedure LoadCustomizedToolbarIcons;
 
   private
     LastWasHex: boolean;
@@ -5921,6 +5922,41 @@ begin
   ToggleDarkMode;
 end;
 
+procedure TMainForm.LoadCustomizedToolbarIcons;
+const
+  PROCESS_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFhSURBVDhPpZNLSwJhFIZn2T9p06YsclJpVdBl66ZFtDFxF4g6GmhOFDQ/IEJcjInmpVKyWqcwJmKpC6GLuXFRBF22BvHGmZjQGWXAFg+c833nfb7NdxgAzH9gxg2G12mW/RoGyjJTRuNnI+WDmnqCQ1qwISXY5Fp9T1BWFqAkoJt6wo2rzA7en5L4aCWRz+6iGnf3zBB9Ba2MD3elA+DtvIeHcgiPJ159QT7m1YQV8nGfvkA65TVBBSmzrS+QX+kTJgpHm/qC+2MOzUpYE27ehNFIevQFRCXmgnQhoPOcRecli+KlAMfKHBzWWXwX97SCatwDNdeiEyH/qkxRdKIcdWHeMIqN5Qncxn5nZIE/ENgP8ryoxs1x0RmLBQTVdLbFB8VF42TBurQgUU9Zzd9WaLfbI6zJBIJq9f3fLnQ3tVpt7CyXWyPESMTGms0gqFbOaWagYN1uP1QvjBqaGSgYhh8Yc8DG961aogAAAABJRU5ErkJggg==';
+  OPEN_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFwSURBVDhPY/j//z8DMfjGzRuydoXGO1+8eCGALI6hEBsGabKaoHHV4or4f49uywNfvnxhJ9oAkGKXDrODIM0gbH5J7H9Yh/eKP3/+MIIN6Fu9vmHSzv1gvG7PPl90A9winSaqdPK9MD4iCjYARCu38L2Iz4wtAxtgsXbff+9n/8DY8eTdv9NWrU1FN+TBgwcc2suEwAaAaBAfJodiAAg7n3v8323uqoteC9dd8Fq47rzHrGUnnCbNO4lsQHLv5Hk4DcCGPe5/A2uEGeA+a9kF6hugMm3tf4H+9Vgxf++6/1zNzf95ulvANG/d3O9KzQsuaCaX7AEb4H7743+27g3/WTY+JglHTlo0E2yA3qJt/5nXP8RQgA8zr7z5f8O2HS5gA4R7VmEoIIT56he8/PHjBzODTuf0/8yzj2MoIIRjpyyZBg5EgbhCDElCmHn59f8btm13BBugGJFxVal5wQ1SsGZ+84kfP34wgQ1AT7akYgBqaZ14jHKJ0gAAAABJRU5ErkJggg==';
+  SAVE_ICON = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADJSURBVDhPzc6xCoJgFIbhM3cJbd1Ne3gRbQ01Bs1BBLUoIhGEi1Q2WJlRolOCFN2CuHsHXxyjyBTSbGh4t/M9/0+TKUESCaPBPWMj4uC6idaWBVXTsDvq4PuT12oDII7yAN1eD0QEw9Ri4BX5GngguQBJUdAQBGz38wTAxYAsE8bDe4tlB5a9ysww+9lAmf4EmKkVaPNqoXjzBM6XJoBroXiTAILAge8bueLbFPD+wqdSQOkfRJGHMHRzxbe/BRZ6DbZTLxRveHsDj1nQVbvu6AUAAAAASUVORK5CYII=';
+
+  procedure ReplaceIcon(index: integer; const encodedIcon: string);
+  var
+    bitmap: TBitmap;
+    decodedIcon: string;
+    iconStream: TMemoryStream;
+    png: TPortableNetworkGraphic;
+  begin
+    decodedIcon:=DecodeStringBase64(encodedIcon);
+    iconStream:=TMemoryStream.Create;
+    png:=TPortableNetworkGraphic.Create;
+    bitmap:=TBitmap.Create;
+    try
+      iconStream.WriteBuffer(decodedIcon[1], Length(decodedIcon));
+      iconStream.Position:=0;
+      png.LoadFromStream(iconStream);
+      bitmap.Assign(png);
+      mfImageList.Replace(index, bitmap, nil);
+    finally
+      bitmap.Free;
+      png.Free;
+      iconStream.Free;
+    end;
+  end;
+begin
+  ReplaceIcon(7, PROCESS_ICON);
+  ReplaceIcon(3, OPEN_ICON);
+  ReplaceIcon(4, SAVE_ICON);
+end;
+
 procedure TMainForm.FormCreate(Sender: TObject);
 var
   tokenhandle: thandle;
@@ -5948,6 +5984,16 @@ var
   createlog: boolean;
   s: string;
 begin
+  LoadCustomizedToolbarIcons;
+
+  miTable.MenuIndex:=1;
+  mi3d.MenuIndex:=2;
+  Settings1.MenuIndex:=3;
+  miAdvancedOptionsTop.MenuIndex:=4;
+  miTableExtrasTop.MenuIndex:=5;
+  miToggleDarkMode.MenuIndex:=6;
+  miHelp.MenuIndex:=MainMenu1.Items.Count-1;
+
   mtid:=MainThreadID;
 
   tthread.NameThreadForDebugging('Main GUI Thread', GetCurrentThreadId);
@@ -8543,7 +8589,6 @@ begin
     exit;
 
   panel7.DoubleBuffered := True;
-  flashprocessbutton := tflash.Create(False);
 
 
 

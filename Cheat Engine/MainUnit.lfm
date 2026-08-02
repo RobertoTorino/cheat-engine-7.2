@@ -759,8 +759,8 @@ object MainForm: TMainForm
       BevelOuter = bvNone
       ClientHeight = 36
       ClientWidth = 36
-      Color = clRed
-      ParentColor = False
+      Color = clBtnFace
+      ParentColor = True
       ParentFont = False
       TabOrder = 10
       object sbOpenProcess: TSpeedButton
@@ -770,6 +770,7 @@ object MainForm: TMainForm
         Top = 3
         Width = 30
         BorderSpacing.Around = 3
+        Flat = False
         Images = mfImageList
         ImageIndex = 7
         ImageWidth = 23
@@ -1662,6 +1663,7 @@ object MainForm: TMainForm
       Width = 309
       Anchors = [akTop, akLeft, akBottom]
       BorderSpacing.Right = 8
+      BorderSpacing.Bottom = 0
       Color = clBtnFace
       Columns = <      
         item
@@ -1723,6 +1725,7 @@ object MainForm: TMainForm
       Top = 408
       Width = 98
       Anchors = [akLeft, akBottom]
+      BorderSpacing.Left = 0
       BorderSpacing.Bottom = 5
       Caption = 'Memory View'
       OnClick = btnMemoryViewClick
@@ -2597,6 +2600,7 @@ object MainForm: TMainForm
     end
     object ools1: TMenuItem
       Caption = '&Tools'
+      Visible = False
     end
     object miDotNET: TMenuItem
       Caption = '.Net'
@@ -2675,6 +2679,7 @@ object MainForm: TMainForm
     end
     object miLanguages: TMenuItem
       Caption = 'Languages'
+      Visible = False
     end
     object miHelp: TMenuItem
       Caption = '&Help'
