@@ -555,6 +555,7 @@ type
     Settings1: TMenuItem;
     miAdvancedOptionsTop: TMenuItem;
     miTableExtrasTop: TMenuItem;
+    miToggleDarkMode: TMenuItem;
     N6: TMenuItem;
     a1: TMenuItem;
     b1: TMenuItem;
@@ -707,6 +708,7 @@ type
     procedure Removeselectedaddresses1Click(Sender: TObject);
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure CommentButtonClick(Sender: TObject);
+    procedure DarkModeButtonClick(Sender: TObject);
     procedure Copy1Click(Sender: TObject);
     procedure Cut1Click(Sender: TObject);
     procedure Paste1Click(Sender: TObject);
@@ -792,7 +794,12 @@ type
     isbit: boolean;
     tempbitmap: Tbitmap;
     dontrunshow: boolean;
+    FDarkModeEnabled: boolean;
+    procedure ApplyThemeToControl(control: TControl; darkMode: boolean);
+    procedure ApplyMainTheme(darkMode: boolean);
+    procedure ToggleDarkMode;
 
+  private
     LastWasHex: boolean;
     dontconvert: boolean;
     FlashProcessButton: TFlash;
@@ -5748,6 +5755,172 @@ begin
 end;
 
 
+procedure TMainForm.ApplyThemeToControl(control: TControl; darkMode: boolean);
+const
+  DARK_BG = $333333;
+  DARK_INPUT = $FAFAFA;
+  DARK_TEXT = $EAEAEA;
+var
+  i: integer;
+  backgroundColor, inputColor, textColor, inputTextColor: TColor;
+  fontStyle: TFontStyles;
+begin
+  if control=nil then
+    exit;
+
+  if darkMode then
+  begin
+    backgroundColor:=DARK_BG;
+    inputColor:=DARK_INPUT;
+    textColor:=DARK_TEXT;
+    inputTextColor:=clBlack;
+    fontStyle:=[fsBold];
+  end
+  else
+  begin
+    backgroundColor:=clBtnFace;
+    inputColor:=clWindow;
+    textColor:=clWindowText;
+    inputTextColor:=clWindowText;
+    fontStyle:=[];
+  end;
+
+  if control is TLabel then
+  begin
+    TLabel(control).Font.Style:=fontStyle;
+    TLabel(control).Font.Color:=textColor;
+  end;
+
+  if control is TButton then
+  begin
+    TButton(control).Font.Style:=fontStyle;
+    TButton(control).Font.Color:=textColor;
+    TButton(control).Color:=backgroundColor;
+  end;
+
+  if control is TSpeedButton then
+  begin
+    TSpeedButton(control).Font.Style:=fontStyle;
+    TSpeedButton(control).Font.Color:=textColor;
+  end;
+
+  if control is TCheckBox then
+  begin
+    TCheckBox(control).ParentColor:=false;
+    TCheckBox(control).Font.Style:=fontStyle;
+    TCheckBox(control).Font.Color:=textColor;
+  end;
+
+  if control is TRadioButton then
+  begin
+    TRadioButton(control).ParentColor:=false;
+    TRadioButton(control).Font.Style:=fontStyle;
+    TRadioButton(control).Font.Color:=textColor;
+  end;
+
+  if control is TGroupBox then
+  begin
+    TGroupBox(control).ParentColor:=false;
+    TGroupBox(control).Color:=backgroundColor;
+    TGroupBox(control).Font.Style:=fontStyle;
+    TGroupBox(control).Font.Color:=textColor;
+  end;
+
+  if control is TPanel then
+  begin
+    TPanel(control).ParentColor:=false;
+    TPanel(control).Color:=backgroundColor;
+    TPanel(control).Font.Style:=fontStyle;
+    TPanel(control).Font.Color:=textColor;
+  end;
+
+  if control is TEdit then
+  begin
+    TEdit(control).ParentColor:=false;
+    TEdit(control).Color:=inputColor;
+    TEdit(control).Font.Style:=fontStyle;
+    TEdit(control).Font.Color:=inputTextColor;
+  end;
+
+  if control is TComboBox then
+  begin
+    TComboBox(control).ParentColor:=false;
+    TComboBox(control).Color:=inputColor;
+    TComboBox(control).Font.Style:=fontStyle;
+    TComboBox(control).Font.Color:=inputTextColor;
+  end;
+
+  if control is TListView then
+  begin
+    TListView(control).ParentColor:=false;
+    if darkMode then
+      TListView(control).Color:=backgroundColor
+    else
+      TListView(control).Color:=inputColor;
+    TListView(control).Font.Style:=fontStyle;
+    TListView(control).Font.Color:=textColor;
+  end;
+
+  if control is TCustomControl then
+  begin
+    TCustomControl(control).Color:=backgroundColor;
+    TCustomControl(control).Font.Style:=fontStyle;
+    TCustomControl(control).Font.Color:=textColor;
+  end;
+
+  if control is TTablist then
+  begin
+    TTablist(control).Color:=backgroundColor;
+    TTablist(control).Brush.Color:=backgroundColor;
+    TTablist(control).Font.Style:=fontStyle;
+    TTablist(control).Font.Color:=textColor;
+  end;
+
+  if control is TWinControl then
+    for i:=0 to TWinControl(control).ControlCount-1 do
+      ApplyThemeToControl(TWinControl(control).Controls[i], darkMode);
+
+  if control=Self then
+  begin
+    Color:=backgroundColor;
+    Font.Style:=fontStyle;
+    Font.Color:=textColor;
+  end;
+end;
+
+procedure TMainForm.ApplyMainTheme(darkMode: boolean);
+begin
+  ApplyThemeToControl(Self, darkMode);
+
+  if darkMode then
+  begin
+    foundlistColors.NormalValueColor:=$EAEAEA;
+    foundlistColors.DynamicColor:=$EAEAEA;
+    miToggleDarkMode.Caption:='Light Mode';
+  end
+  else
+  begin
+    foundlistColors.NormalValueColor:=clWindowText;
+    foundlistColors.DynamicColor:=clWindowText;
+    miToggleDarkMode.Caption:='Dark Mode';
+  end;
+
+  Panel5Resize(Panel5);
+  UndoScan.BringToFront;
+  foundlist3.Invalidate;
+end;
+
+procedure TMainForm.ToggleDarkMode;
+begin
+  FDarkModeEnabled:=not FDarkModeEnabled;
+  ApplyMainTheme(FDarkModeEnabled);
+end;
+
+procedure TMainForm.DarkModeButtonClick(Sender: TObject);
+begin
+  ToggleDarkMode;
+end;
+
 procedure TMainForm.FormCreate(Sender: TObject);
 var
   tokenhandle: thandle;
@@ -8319,6 +8492,11 @@ begin
   else
     firsttime := True;
 
+  if reg.ValueExists('DarkMode') then
+    FDarkModeEnabled:=reg.ReadBool('DarkMode')
+  else
+    FDarkModeEnabled:=true;
+
   if firsttime then
   begin
     reg.WriteBool('First Time User', False);
@@ -8576,6 +8754,8 @@ begin
     Foundlist3.Font.Height:=i;
   end;
   freeandnil(reg);
+
+  ApplyMainTheme(FDarkModeEnabled);
 
 
   btnNewScan.autosize:=true;
@@ -10646,6 +10826,7 @@ begin
   x[6]:=foundlist3.columns[0].Width;
 
   saveformposition(self, x);
+  cereg.writeBool('DarkMode', FDarkModeEnabled);
 
   if foundlist <> nil then
     foundlist.Deinitialize;

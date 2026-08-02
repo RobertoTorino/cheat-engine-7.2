@@ -2482,6 +2482,10 @@ object MainForm: TMainForm
       Caption = 'Table Extras'
       OnClick = CommentButtonClick
     end
+    object miToggleDarkMode: TMenuItem
+      Caption = 'Dark Mode'
+      OnClick = DarkModeButtonClick
+    end
     object Process1: TMenuItem
       Caption = '&Process'
       Visible = False
