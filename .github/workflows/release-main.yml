@@ -21,8 +21,22 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-2.0.10-fpc-3.2.0-win64.exe'
-          Invoke-WebRequest -Uri 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Lazarus%202.0.10/lazarus-2.0.10-fpc-3.2.0-win64.exe/download' -OutFile $installer
+          $installer = Join-Path $env:SystemDrive 'lazarus-2.0.10-fpc-3.2.0-win64.exe'
+          $downloadUrl = 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%2064%20bits/Lazarus%202.0.10/lazarus-2.0.10-fpc-3.2.0-win64.exe'
+          & curl.exe --fail --location --retry 5 --retry-delay 5 --retry-all-errors --output $installer $downloadUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Lazarus download failed with curl exit code $LASTEXITCODE"
+          }
+
+          $stream = [System.IO.File]::OpenRead($installer)
+          try {
+            if ($stream.Length -ne 191123384 -or $stream.ReadByte() -ne 0x4D -or $stream.ReadByte() -ne 0x5A) {
+              throw "Downloaded Lazarus installer is invalid (size: $($stream.Length) bytes)"
+            }
+          } finally {
+            $stream.Dispose()
+          }
+
           Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SP-','/NORESTART','/DIR=C:\lazarus' -Wait
 
       - name: Build portable release
