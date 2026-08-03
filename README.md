@@ -1,4 +1,4 @@
-[![release-main](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/release-main.yml/badge.svg)](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/release-main.yml)  [![nightly-portable-7.5](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/nightly-portable-7.5.yml/badge.svg)](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/nightly-portable-7.5.yml)
+[![release-main](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/release-main.yml/badge.svg)](https://github.com/RobertoTorino/cheat-engine-7.2-7.5-portable/actions/workflows/release-main.yml) 
 
 
 
